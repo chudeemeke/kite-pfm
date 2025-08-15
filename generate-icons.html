@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate PWA Icons</title>
+</head>
+<body>
+    <h1>PWA Icon Generator</h1>
+    <p>Open this file in a browser to generate the PWA icons</p>
+    
+    <div id="output"></div>
+    
+    <script>
+        const sizes = [64, 192, 512];
+        const iconSVG = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+              <rect width="512" height="512" rx="128" fill="url(#gradient)"/>
+              <path d="M256 120L370 220L256 392L142 220Z" fill="white" opacity="0.9"/>
+              <path d="M256 120L370 220L256 280Z" fill="white"/>
+              <defs>
+                <linearGradient id="gradient" x1="0" y1="0" x2="512" y2="512">
+                  <stop offset="0%" stop-color="#0ea5e9"/>
+                  <stop offset="100%" stop-color="#0369a1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+        `;
+        
+        sizes.forEach(size => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, size, size);
+                
+                // Create download link
+                const link = document.createElement('a');
+                link.download = `pwa-${size}x${size}.png`;
+                link.href = canvas.toDataURL();
+                link.textContent = `Download ${size}x${size} icon`;
+                link.style.display = 'block';
+                link.style.margin = '10px';
+                document.getElementById('output').appendChild(link);
+                
+                // Also create maskable version for 512
+                if (size === 512) {
+                    const maskableLink = document.createElement('a');
+                    maskableLink.download = `maskable-icon-512x512.png`;
+                    maskableLink.href = canvas.toDataURL();
+                    maskableLink.textContent = `Download maskable 512x512 icon`;
+                    maskableLink.style.display = 'block';
+                    maskableLink.style.margin = '10px';
+                    document.getElementById('output').appendChild(maskableLink);
+                }
+            };
+            
+            const blob = new Blob([iconSVG], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            img.src = url;
+        });
+        
+        // Generate apple touch icon
+        const appleCanvas = document.createElement('canvas');
+        appleCanvas.width = 180;
+        appleCanvas.height = 180;
+        const appleCtx = appleCanvas.getContext('2d');
+        
+        const appleImg = new Image();
+        appleImg.onload = function() {
+            appleCtx.drawImage(appleImg, 0, 0, 180, 180);
+            
+            const link = document.createElement('a');
+            link.download = 'apple-touch-icon.png';
+            link.href = appleCanvas.toDataURL();
+            link.textContent = 'Download Apple Touch Icon';
+            link.style.display = 'block';
+            link.style.margin = '10px';
+            document.getElementById('output').appendChild(link);
+        };
+        
+        const appleBlob = new Blob([iconSVG], {type: 'image/svg+xml'});
+        const appleUrl = URL.createObjectURL(appleBlob);
+        appleImg.src = appleUrl;
+        
+        // Info text
+        const info = document.createElement('p');
+        info.textContent = 'Click each link to download the icon, then save them to the public folder';
+        info.style.marginTop = '20px';
+        document.getElementById('output').appendChild(info);
+    </script>
+</body>
+</html>

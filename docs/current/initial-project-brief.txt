@@ -1,0 +1,217 @@
+Build Brief: Kite (Personal Finance PWA) — v1.0 Production Release
+Role & Output
+You are a senior frontend engineer building a mobile-first PWA called Kite (style the UX based on https://emma-app.com/ and https://snoop.app/). Ship a full, production-ready codebase in a single downloadable ZIP, with a clear tree, setup commands, CI/CD, tests, and docs. Assume Windows/PowerShell + Node 20+.
+
+Tech (locked)
+React 18 + Vite + TypeScript + Tailwind
+Router: react-router-dom
+State: Zustand (slices per feature)
+Storage: IndexedDB via Dexie
+Charts: Recharts (with safe, responsive wrappers)
+PWA: vite-plugin-pwa (generateSW)
+Testing: Vitest + Testing Library + Playwright (mobile-first e2e)
+CI: GitHub Actions (Pages) + Cloudflare Pages option
+Formatting/Lint: ESLint (TS + React), Prettier
+
+Hosting & Routing (non-negotiable)
+Repo will usually be kite-pfm published at /kite-pfm/.
+Router must use import.meta.env.BASE_URL as basename.
+index.html must reference manifest.webmanifest and /public/icons/* relatively.
+GitHub Actions must:
+set VITE_BASE=/${{ github.event.repository.name }}/
+run npm ci && npm run build
+copy SPA fallback: cp dist/index.html dist/404.html
+upload dist to Pages
+Cloudflare Pages: build npm run build, output dist, no VITE_BASE override.
+PWA manifest & SW must honor subpath: start_url: import.meta.env.BASE_URL || '/', scope: same.
+
+UX & Style
+Mobile-first, iOS-like bottom nav; top bar with 🇬🇧 badge + theme toggle (persisted).
+Light/Dark parity; emojis + icons; no heavy blur/backdrop; keep it fast.
+Tappable cards; accessible focus states; prefers simple, composable components.
+Emma-style: calm pastel palette, rounded cards, gentle micro-interactions (CSS only).
+
+v1.0 Scope (delta from v0.7.3)
+Implement the backlog as production features, plus platform hardening:
+1. Rolling Budgets
+ Per-category monthly budgets with carryover options: carryNone | carryUnspent | carryOverspend.
+ Month boundary logic (UTC-safe, user-timezone aware).
+ Budget progress rings + overspend states.
+ Budget ledger explaining carry-in/out math
+2. Rule-Based Categorisation
+ Rules on merchant/text/amount with equals | contains | regex | amountRange.
+ Priority and “stop processing” toggle.
+ Preview before apply; bulk re-categorise; audit log.
+3. Subscriptions + Reminders (Local)
+ Track recurring payments; next due date prediction.
+ ICS export (per sub or consolidated). Calendar-safe UIDs.
+ Local notifications placeholder UI for future push/email.
+4. CSV Import/Export + Schema Versioning
+ Import: map columns, dedupe, dry-run preview, rule preview.
+ Export: accounts, transactions, budgets, categories, rules.
+ Dexie schema versioning with upgrade migrations & metadata table (appVersion, schemaVersion, history).
+5. Onboarding Walkthrough + Demo/Reset
+ First-run tour (no heavy libs): masked highlights + short hints.
+ Demo data seed; Reset Kite (danger zone) with confirm.
+6. Security & Sync Readiness
+ Design notes for future end-to-end encryption & sync (WebCrypto AES-GCM; PBKDF2/Argon2 key derivation; record-level IVs; envelope keys per device).
+ For v1.0 (local-only), optional “Local Vault” to encrypt stored rule notes & subscription notes.
+ Threat model doc + key rotation plan (documented).
+7. Platform Hardening
+ SafeResponsive wrapper (ResizeObserver) around Recharts.
+ Error boundaries, skeletons, empty-states, optimistic UI for edits.
+ Performance budgets: TTI < 2.5s on Moto G-class; bundle splitting.
+ A11y: semantic regions, labels, tab order, prefers-reduced-motion.
+
+Pages (routes)
+Home (Overview) /
+- Net worth summary, cashflow (14/30d), spend by category, quick filters to Activity.
+Activity /tx (supports ?category=<id>&account=<id>)
+
+Infinite list (virtualized), filter pills, bulk edit, rule preview.
+
+- Budgets /budgets
+	Category budgets; monthly selector; carryover ledger; edit drawer.
+- Accounts /accounts
+	Add/edit accounts; balances; account types; close/archive.
+- Insights /insights
+	Trends, biggest merchants, category drill-downs.
+- Settings /settings
+	Theme, currency/locale, data export/import, rules manager, subscriptions, security notes, reset.
+- Add (+) floating button for quick add (txn/subscription/budget).
+
+Data Model (Dexie)
+accounts(id, name, type, currency, balance, createdAt, archivedAt?)
+
+transactions(id, accountId, date, amount, currency, description, merchant?, categoryId?, isSubscription?, metadata)
+
+categories(id, name, icon, color, parentId?)
+
+budgets(id, categoryId, month (YYYY-MM), amount, carryStrategy, notes?)
+
+rules(id, name, enabled, priority, conditions[], actions[], stopProcessing)
+
+conditions[]: { field: 'merchant'|'description'|'amount', op: 'eq'|'contains'|'regex'|'range', value }
+
+actions[]: { setCategoryId?, setIsSubscription?, setNotesAppend? }
+
+subscriptions(id, name, cadence ('monthly'|'yearly'|'custom'), amount, currency, nextDueDate, accountId?, categoryId?, notes?)
+
+appMeta(id='singleton', schemaVersion, appVersion, createdAt, updatedAt, migrations[])
+
+Indexes on transactions.date, transactions.categoryId, transactions.accountId, budgets.month+categoryId, rules.priority.
+
+Include Dexie version(n).stores({...}).upgrade(tx => ...) migration chain and a helper for idempotent upgrades with a migrations ledger in appMeta.
+
+State (Zustand slices)
+useAccounts, useTransactions, useCategories, useBudgets, useRules, useSubscriptions, useUI (theme, toasts, tour progress).
+
+Each slice: actions typed, optimistic writes, persistence only via Dexie service layer (no direct IndexedDB calls from components).
+
+Services (pure TS modules)
+db/ Dexie instance + repositories (per entity).
+
+logic/budgeting.ts carryover math, boundaries, ledger computation.
+
+logic/rules.ts engine with run/apply, conflict resolution, dry-run.
+
+logic/subscriptions.ts next due computation; ICS generator.
+
+logic/csv.ts import mapping, column inference, safe parsing.
+
+logic/export.ts CSV/JSON export with BOM option; schema headers.
+
+logic/format.ts currency/date/relative time helpers.
+
+Components (examples)
+Layout: TopBar, BottomNav, Page, Card, Section, Drawer.
+
+Inputs: MoneyInput, DateInput, PillToggle, SearchInput, RuleBuilder.
+
+Charts: SafeResponsive, Cashflow, SpendByCategory, NetWorth.
+
+Lists: VirtualList for transactions (no jank), EmptyState, ErrorBoundary.
+
+PWA & Assets
+vite-plugin-pwa generateSW; offline (precache + runtime caching for same-origin).
+
+Manifest icons (192/512), themeColor light/dark variants; relative paths.
+
+start_url & scope derived from import.meta.env.BASE_URL.
+
+Installability test + 404 fallback at GH Pages.
+
+Performance & A11y Targets
+Core Web Vitals: LCP < 2.5s, CLS < 0.1, INP < 200ms on low-end mobile.
+
+App bundle split by route; avoid large chart libs on non-chart routes.
+
+a11y lint + axe rules in tests; keyboard flows validated.
+
+Testing
+Unit: logic modules (budget ledger, rules engine, CSV, ICS).
+
+Component: critical components with Testing Library (mobile viewport).
+
+E2E: Playwright: onboarding, import CSV, apply rules, set budgets, month boundary carryover, export, PWA install, subpath routing.
+
+Coverage report; run in CI.
+
+CI/CD
+GitHub Actions:
+
+ci.yml: lint, typecheck, unit, build, e2e (headless).
+
+deploy.yml: set VITE_BASE=/${{ github.event.repository.name }}/, build, copy 404.html, upload dist to Pages.
+
+Cloudflare Pages: docs in README with build/output settings.
+
+Docs
+README: install, run, build, deploy (GH & CF), envs, troubleshooting.
+
+/docs/: security plan (future sync + encryption), data model & migrations, testing strategy, performance budgets.
+
+CHANGELOG.md: conventional commits.
+
+.gitattributes: normalize EOL for Windows (reduce CRLF warnings).
+
+Definition of Done (acceptance)
+Works at subpath and root; PWA install succeeds; offline works.
+
+Mobile-first; light/dark parity; no layout jank (charts & budgets stable).
+
+Backlog items 1–5 implemented; security design notes included.
+
+CSV import/export verified with round-trip tests.
+
+IndexedDB migrations tested across versions.
+
+No regressions in routing/PWA; lints clean; type-safe; a11y checks pass.
+
+CI green; GH Pages deploy works with SPA 404; Cloudflare build docs correct.
+
+Deliverables
+Single ZIP with full app.
+
+Commands for Windows/PowerShell:
+
+powershell
+Copy
+Edit
+npm ci
+npm run dev
+$env:VITE_BASE="/kite-pfm/"; npm run build
+Copy-Item .\dist\index.html .\dist\404.html -Force
+npm run preview
+Tree overview, migration notes, test/QA checklist, and deploy steps for GH Pages & Cloudflare.
+
+Sample CSVs and demo seed for onboarding/reset.
+
+Guardrails
+Keep dependencies lean; no heavyweight UI kits or tour libs.
+
+Avoid backdrop-filter/blur; keep animations subtle and optional.
+
+All assets referenced relatively; no hardcoded absolute URLs.
+
+Do not store secrets. Local-only app.

@@ -1,0 +1,175 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safe-area-inset-top: env(safe-area-inset-top);
+    --safe-area-inset-bottom: env(safe-area-inset-bottom);
+    --safe-area-inset-left: env(safe-area-inset-left);
+    --safe-area-inset-right: env(safe-area-inset-right);
+    
+    /* Settings-controlled variables */
+    --primary-color: #3b82f6;
+    --spacing-unit: 1rem;
+    --gap-unit: 1rem;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+
+  input, textarea, select {
+    @apply outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+  }
+
+  button {
+    @apply select-none;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700;
+  }
+
+  .card-hover {
+    @apply transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white px-4 py-2 rounded-lg font-medium 
+           hover:bg-primary-700 active:bg-primary-800 
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 
+           px-4 py-2 rounded-lg font-medium 
+           hover:bg-gray-300 dark:hover:bg-gray-600 
+           active:bg-gray-400 dark:active:bg-gray-500 
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-white dark:bg-gray-800 
+           border border-gray-300 dark:border-gray-600 
+           rounded-lg text-gray-900 dark:text-gray-100
+           placeholder-gray-500 dark:placeholder-gray-400;
+  }
+
+  .bottom-nav-safe {
+    padding-bottom: calc(1rem + var(--safe-area-inset-bottom));
+  }
+
+  .top-bar-safe {
+    padding-top: var(--safe-area-inset-top);
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Settings-responsive classes */
+  .settings-spacing {
+    padding: var(--spacing-unit);
+  }
+
+  .settings-gap {
+    gap: var(--gap-unit);
+  }
+
+  /* Privacy mode styles */
+  .privacy-mode .sensitive-amount {
+    filter: blur(4px);
+    transition: filter 0.2s ease;
+  }
+
+  .privacy-mode .sensitive-amount:hover {
+    filter: blur(0px);
+  }
+
+  .privacy-mode .sensitive-text {
+    filter: blur(2px);
+    transition: filter 0.2s ease;
+  }
+
+  .privacy-mode .sensitive-text:hover {
+    filter: blur(0px);
+  }
+
+  /* Font size responsive classes */
+  .text-sm .text-responsive {
+    font-size: 0.875rem;
+  }
+
+  .text-base .text-responsive {
+    font-size: 1rem;
+  }
+
+  .text-lg .text-responsive {
+    font-size: 1.125rem;
+  }
+
+  /* View density classes */
+  .density-compact .card {
+    padding: 0.5rem;
+  }
+
+  .density-comfortable .card {
+    padding: 1rem;
+  }
+
+  .density-spacious .card {
+    padding: 1.5rem;
+  }
+
+  /* Custom primary color applications */
+  .bg-primary-600 {
+    background-color: var(--primary-color);
+  }
+
+  .text-primary-600 {
+    color: var(--primary-color);
+  }
+
+  .border-primary-600 {
+    border-color: var(--primary-color);
+  }
+
+  /* Performance mode - reduce animations when enabled */
+  .performance-mode * {
+    animation-duration: 0.05s !important;
+    transition-duration: 0.05s !important;
+  }
+
+  .performance-mode .card-hover:hover {
+    transform: none !important;
+  }
+}
