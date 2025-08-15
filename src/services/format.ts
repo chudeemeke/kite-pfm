@@ -1,6 +1,7 @@
 import { format, formatDistanceToNow, isToday, isYesterday, isTomorrow } from 'date-fns'
 import { enGB } from 'date-fns/locale'
 import { useSettingsStore } from '@/stores/settings'
+import { currencySymbols } from '@/design-system/tokens'
 
 export class FormatService {
   private locale = enGB
@@ -13,6 +14,30 @@ export class FormatService {
     const finalCurrency = currency || settings.currency.primaryCurrency
     const locale = this.getLocaleFromSettings()
     
+    // Get the currency symbol from our tokens
+    const symbol = currencySymbols[finalCurrency as keyof typeof currencySymbols]
+    
+    // For currencies with explicit symbols in our tokens, format manually
+    // This ensures NGN shows ₦ and not NGN
+    if (symbol) {
+      const formatted = new Intl.NumberFormat(locale, {
+        style: 'decimal',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(Math.abs(amount))
+      
+      // Handle negative amounts
+      const sign = amount < 0 ? '-' : ''
+      
+      // Position symbol based on locale (UK/US before, EU after)
+      if (locale === 'en-GB' || locale === 'en-US' || locale === 'en-CA') {
+        return `${sign}${symbol}${formatted}`
+      } else {
+        return `${sign}${formatted}${symbol}`
+      }
+    }
+    
+    // Fallback to Intl for currencies not in our list
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: finalCurrency,
@@ -30,6 +55,27 @@ export class FormatService {
     const locale = this.getLocaleFromSettings()
     
     if (Math.abs(amount) >= 1000000) {
+      // Get the currency symbol from our tokens
+      const symbol = currencySymbols[finalCurrency as keyof typeof currencySymbols]
+      
+      if (symbol) {
+        const formatted = new Intl.NumberFormat(locale, {
+          style: 'decimal',
+          notation: 'compact',
+          maximumFractionDigits: 1
+        }).format(Math.abs(amount))
+        
+        const sign = amount < 0 ? '-' : ''
+        
+        // Position symbol based on locale
+        if (locale === 'en-GB' || locale === 'en-US' || locale === 'en-CA') {
+          return `${sign}${symbol}${formatted}`
+        } else {
+          return `${sign}${formatted}${symbol}`
+        }
+      }
+      
+      // Fallback to Intl for currencies not in our list
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: finalCurrency,
@@ -149,13 +195,15 @@ export class FormatService {
   /**
    * Format transaction amount with color coding
    */
-  formatTransactionAmount(amount: number, currency: string = 'GBP'): {
+  formatTransactionAmount(amount: number, currency?: string): {
     formatted: string
     isPositive: boolean
     isNegative: boolean
   } {
+    const settings = useSettingsStore.getState()
+    const finalCurrency = currency || settings.currency.primaryCurrency
     return {
-      formatted: this.formatCurrency(amount, currency),
+      formatted: this.formatCurrency(amount, finalCurrency),
       isPositive: amount > 0,
       isNegative: amount < 0
     }

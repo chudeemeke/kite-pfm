@@ -38,14 +38,24 @@ function App() {
   // Initialize stores when database is ready
   useEffect(() => {
     if (isDbInitialized) {
-      initializeStores().catch(console.error)
+      // Initialize stores and services sequentially to avoid race conditions
+      const initialize = async () => {
+        try {
+          await initializeStores()
+          
+          // Wait a moment for stores to fully hydrate
+          await new Promise(resolve => setTimeout(resolve, 200))
+          
+          // Initialize services
+          settingsService.init()
+          notificationService.init()
+          securityService.init()
+        } catch (error) {
+          console.error('Failed to initialize app:', error)
+        }
+      }
       
-      // Initialize services after stores are initialized
-      setTimeout(() => {
-        settingsService.init()
-        notificationService.init()
-        securityService.init()
-      }, 100)
+      initialize()
     }
   }, [isDbInitialized, initializeStores])
   

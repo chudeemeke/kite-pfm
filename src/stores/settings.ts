@@ -151,12 +151,12 @@ const defaultSettings: AllSettings = {
     twoFactorAuth: false
   },
   currency: {
-    primaryCurrency: 'USD',
+    primaryCurrency: 'GBP',
     multiCurrencySupport: false,
     language: 'en',
-    region: 'US',
+    region: 'GB',
     firstDayOfWeek: 'monday',
-    fiscalYearStart: '01-01'
+    fiscalYearStart: '04-06'  // UK tax year starts April 6th
   },
   budget: {
     defaultCarryStrategy: 'carryUnspent',

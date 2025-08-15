@@ -69,6 +69,12 @@ import ProfileEditor from '@/components/ProfileEditor'
 import PinEntryModal from '@/components/PinEntryModal'
 import { notificationService } from '@/services/notifications'
 import { securityService } from '@/services/security'
+import { currencySymbols } from '@/design-system/tokens'
+
+// Helper function to get currency symbol
+const getCurrencySymbol = (currency: string): string => {
+  return currencySymbols[currency as keyof typeof currencySymbols] || currency
+}
 
 const SettingsPage = () => {
   const {
@@ -546,7 +552,7 @@ const SettingsPage = () => {
               min={100}
               max={2000}
               step={50}
-              prefix={currency.primaryCurrency === 'USD' ? '$' : currency.primaryCurrency === 'EUR' ? '€' : currency.primaryCurrency === 'GBP' ? '£' : currency.primaryCurrency}
+              prefix={getCurrencySymbol(currency.primaryCurrency)}
             />
           </SettingsItem>
         )}
@@ -812,12 +818,20 @@ const SettingsPage = () => {
               saveSettings('Primary currency updated')
             }}
             options={[
-              { value: 'USD', label: 'US Dollar (USD)' },
-              { value: 'EUR', label: 'Euro (EUR)' },
-              { value: 'GBP', label: 'British Pound (GBP)' },
-              { value: 'CAD', label: 'Canadian Dollar (CAD)' },
-              { value: 'AUD', label: 'Australian Dollar (AUD)' },
-              { value: 'JPY', label: 'Japanese Yen (JPY)' }
+              { value: 'GBP', label: 'British Pound (£)' },
+              { value: 'NGN', label: 'Nigerian Naira (₦)' },
+              { value: 'USD', label: 'US Dollar ($)' },
+              { value: 'EUR', label: 'Euro (€)' },
+              { value: 'CAD', label: 'Canadian Dollar (C$)' },
+              { value: 'AUD', label: 'Australian Dollar (A$)' },
+              { value: 'JPY', label: 'Japanese Yen (¥)' },
+              { value: 'CNY', label: 'Chinese Yuan (¥)' },
+              { value: 'INR', label: 'Indian Rupee (₹)' },
+              { value: 'ZAR', label: 'South African Rand (R)' },
+              { value: 'KES', label: 'Kenyan Shilling (KSh)' },
+              { value: 'GHS', label: 'Ghanaian Cedi (GH₵)' },
+              { value: 'EGP', label: 'Egyptian Pound (E£)' },
+              { value: 'MAD', label: 'Moroccan Dirham (DH)' }
             ]}
           />
         </SettingsItem>

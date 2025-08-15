@@ -4,6 +4,7 @@ import { formatCurrency, formatAccountType, formatRelativeDate } from '@/service
 import { Plus, MoreVertical, AlertCircle, Edit2, Archive, Trash2, Star, Activity, X } from 'lucide-react'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { useNavigate } from 'react-router-dom'
+import { ListItem, ListItemGroup } from '@/components/shared/ListItem'
 
 const AccountsPage = () => {
   const { accounts, isLoading, error, fetchAccounts, updateAccount, archiveAccount, deleteAccount } = useAccountsStore()
@@ -139,23 +140,22 @@ const AccountsPage = () => {
       </div>
       
       {/* Active Accounts */}
-      <div className="card">
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            Active Accounts
-          </h3>
-        </div>
-        
-        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {activeAccounts.map((account) => (
-            <div key={account.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer" onClick={() => navigate(`/accounts/${account.id}`)}>
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                      {account.name}
-                    </h3>
-                    <div className="relative" ref={dropdownRef}>
+      <ListItemGroup title="Active Accounts">
+        {activeAccounts.map((account) => {
+          const subtitle = `${formatAccountType(account.type)} • ${account.currency}`
+          const metadata = account.isDefault ? 'Default' : ''
+          
+          return (
+            <ListItem
+              key={account.id}
+              title={account.name}
+              subtitle={subtitle}
+              metadata={metadata}
+              value={formatCurrency(account.balance)}
+              valueColor={account.balance >= 0 ? 'default' : 'danger'}
+              onClick={() => navigate(`/accounts/${account.id}`)}
+              actions={
+                <div className="relative" ref={dropdownRef}>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation()
@@ -214,35 +214,11 @@ const AccountsPage = () => {
                         </div>
                       )}
                     </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    <span>{formatAccountType(account.type)}</span>
-                    <span>{account.currency}</span>
-                    <span>Created {formatRelativeDate(account.createdAt)}</span>
-                    {account.isDefault && (
-                      <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
-                        <Star className="w-3 h-3 fill-current" />
-                        Default
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              
-              <div className="mt-3 text-right">
-                <p className={`text-2xl font-bold ${
-                  account.balance >= 0 
-                    ? 'text-gray-900 dark:text-gray-100' 
-                    : 'text-danger-600 dark:text-danger-400'
-                } ${privacy?.privacyMode ? 'sensitive-amount' : ''}`}>
-                  {formatCurrency(account.balance)}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+              }
+            />
+          )
+        })}
+      </ListItemGroup>
       
       {/* Archived Accounts */}
       {archivedAccounts.length > 0 && (

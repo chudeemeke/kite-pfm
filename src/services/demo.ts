@@ -46,26 +46,52 @@ export class DemoService {
    * Clear all existing data
    */
   async clearAllData(): Promise<void> {
-    await Promise.all([
-      subscriptionRepo.getAll().then(subs => 
-        Promise.all(subs.map(s => subscriptionRepo.delete(s.id)))
-      ),
-      ruleRepo.getAll().then(rules => 
-        Promise.all(rules.map(r => ruleRepo.delete(r.id)))
-      ),
-      budgetRepo.getAll().then(budgets => 
-        Promise.all(budgets.map(b => budgetRepo.delete(b.id)))
-      ),
-      transactionRepo.getAll().then(transactions => 
-        Promise.all(transactions.map(t => transactionRepo.delete(t.id)))
-      ),
-      categoryRepo.getAll().then(categories => 
-        Promise.all(categories.map(c => categoryRepo.delete(c.id)).reverse()) // Delete in reverse order for parent-child relationships
-      ),
-      accountRepo.getAll().then(accounts => 
-        Promise.all(accounts.map(a => accountRepo.delete(a.id)))
-      )
-    ])
+    try {
+      // Delete in proper order to respect foreign key relationships
+      // First delete dependent records
+      const subscriptions = await subscriptionRepo.getAll()
+      for (const sub of subscriptions) {
+        await subscriptionRepo.delete(sub.id)
+      }
+      
+      const rules = await ruleRepo.getAll()
+      for (const rule of rules) {
+        await ruleRepo.delete(rule.id)
+      }
+      
+      const budgets = await budgetRepo.getAll()
+      for (const budget of budgets) {
+        await budgetRepo.delete(budget.id)
+      }
+      
+      const transactions = await transactionRepo.getAll()
+      for (const transaction of transactions) {
+        await transactionRepo.delete(transaction.id)
+      }
+      
+      // Delete categories in reverse order to handle parent-child relationships
+      const categories = await categoryRepo.getAll()
+      const sortedCategories = categories.sort((a, b) => {
+        // Child categories first (those with parentId)
+        if (a.parentId && !b.parentId) return -1
+        if (!a.parentId && b.parentId) return 1
+        return 0
+      })
+      for (const category of sortedCategories) {
+        await categoryRepo.delete(category.id)
+      }
+      
+      // Finally delete accounts
+      const accounts = await accountRepo.getAll()
+      for (const account of accounts) {
+        await accountRepo.delete(account.id)
+      }
+      
+      console.log('All data cleared successfully')
+    } catch (error) {
+      console.error('Error clearing data:', error)
+      throw error
+    }
   }
   
   /**

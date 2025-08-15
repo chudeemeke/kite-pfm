@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { useTransactionsStore, useCategoriesStore, useAccountsStore, toast } from '@/stores'
+import { useTransactionsStore, useCategoriesStore, useAccountsStore, useSettingsStore, toast } from '@/stores'
 import { formatCurrency, formatRelativeDate } from '@/services'
 import { 
   Search, 
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { ListItem, ListItemAction, ListItemGroup } from '@/components/shared/ListItem'
 
 /**
  * Activity page component for managing and viewing transaction history.
@@ -457,105 +458,55 @@ const ActivityPage = () => {
       </div>
       
       {/* Transactions List */}
-      <div className="card divide-y divide-gray-200 dark:divide-gray-700">
+      <ListItemGroup>
         {filteredTransactions.map((transaction) => {
           const account = getAccountById(transaction.accountId)
           const category = transaction.categoryId ? getCategoryById(transaction.categoryId) : null
           const isSelected = selectedTransactions.includes(transaction.id)
           
+          // Build subtitle with account, category, and date
+          const subtitleParts = []
+          if (account) subtitleParts.push(account.name)
+          if (category) {
+            subtitleParts.push(`${category.icon} ${category.name}`)
+          }
+          const subtitle = subtitleParts.join(' • ')
+          
+          // Format the amount with proper sign
+          const formattedAmount = formatCurrency(Math.abs(transaction.amount))
+          const displayAmount = transaction.amount >= 0 ? `+${formattedAmount}` : `-${formattedAmount}`
+          
           return (
-            <div key={transaction.id} className={`p-4 transition-colors ${
-              isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-            }`}>
-              <div className="flex items-center gap-3">
-                {/* Selection Checkbox */}
-                <button
-                  onClick={() => handleSelectTransaction(transaction.id)}
-                  className="flex-shrink-0"
-                >
-                  {isSelected ? (
-                    <CheckSquare className="w-5 h-5 text-primary-600" />
-                  ) : (
-                    <Square className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                  )}
-                </button>
-
-                {/* Transaction Details */}
-                <div 
-                  className="flex-1 cursor-pointer"
-                  onClick={() => handleTransactionClick(transaction)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                          {transaction.description}
-                        </h3>
-                        {transaction.isSubscription && (
-                          <span className="px-2 py-1 text-xs bg-primary-100 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 rounded-full">
-                            Subscription
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{account?.name}</span>
-                        {category && (
-                          <span className="flex items-center gap-1">
-                            <span style={{ color: category.color }}>{category.icon}</span>
-                            {category.name}
-                          </span>
-                        )}
-                        <span>{transaction.date ? formatRelativeDate(transaction.date) : 'No date'}</span>
-                      </div>
-                      
-                      {transaction.merchant && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          {transaction.merchant}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="text-right">
-                      <p className={`font-semibold sensitive-amount ${
-                        transaction.amount >= 0 
-                          ? 'text-success-600 dark:text-success-400' 
-                          : 'text-gray-900 dark:text-gray-100'
-                      }`}>
-                        {transaction.amount >= 0 ? '+' : ''}{formatCurrency(transaction.amount)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Actions */}
-                <div className="flex-shrink-0 flex items-center gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setEditingTransaction(transaction)
-                    }}
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                    title="Edit transaction"
-                  >
-                    <Edit2 className="w-4 h-4 text-gray-400" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDeleteConfirm({ isOpen: true, transactionId: transaction.id })
-                    }}
-                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors"
-                    title="Delete transaction"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ListItem
+              key={transaction.id}
+              selectable
+              selected={isSelected}
+              onSelectChange={() => handleSelectTransaction(transaction.id)}
+              title={transaction.description}
+              subtitle={subtitle}
+              metadata={transaction.date ? formatRelativeDate(transaction.date) : 'No date'}
+              value={displayAmount}
+              valueColor={transaction.amount >= 0 ? 'success' : 'default'}
+              onClick={() => handleTransactionClick(transaction)}
+              actions={
+                <>
+                  <ListItemAction
+                    icon={<Edit2 />}
+                    onClick={() => setEditingTransaction(transaction)}
+                    label="Edit transaction"
+                  />
+                  <ListItemAction
+                    icon={<Trash2 />}
+                    onClick={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
+                    variant="danger"
+                    label="Delete transaction"
+                  />
+                </>
+              }
+            />
           )
         })}
-      </div>
+      </ListItemGroup>
       
       {filteredTransactions.length === 0 && (
         <div className="card p-8 text-center">
@@ -677,10 +628,11 @@ interface EditTransactionModalProps {
  * - Uses modal overlay with backdrop click detection
  */
 const EditTransactionModal = ({ transaction, accounts, categories, onSave, onCancel }: EditTransactionModalProps) => {
+  const { currency: currencySettings } = useSettingsStore()
   const [formData, setFormData] = useState({
     description: transaction.description,
     amount: transaction.amount,
-    currency: transaction.currency || 'USD',
+    currency: transaction.currency || currencySettings.primaryCurrency,
     accountId: transaction.accountId,
     categoryId: transaction.categoryId || '',
     merchant: transaction.merchant || '',
@@ -880,10 +832,11 @@ interface AddTransactionModalProps {
  * - Uses modal overlay with backdrop click detection
  */
 const AddTransactionModal = ({ accounts, categories, onSave, onCancel }: AddTransactionModalProps) => {
+  const { currency: currencySettings } = useSettingsStore()
   const [formData, setFormData] = useState({
     description: '',
     amount: 0,
-    currency: 'USD',
+    currency: currencySettings.primaryCurrency,
     accountId: accounts[0]?.id || '',
     categoryId: '',
     merchant: '',
