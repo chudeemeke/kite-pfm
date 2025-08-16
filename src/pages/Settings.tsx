@@ -763,7 +763,8 @@ const SettingsPage = () => {
               
               <button
                 onClick={async () => {
-                  const available = await securityService.isBiometricAvailable()
+                  const { biometricAuth } = await import('@/services/biometric')
+                  const available = await biometricAuth.isSupported()
                   if (available) {
                     const success = await securityService.enableBiometric()
                     if (success) {
@@ -782,7 +783,7 @@ const SettingsPage = () => {
             
             <button
               onClick={() => {
-                securityService.lockApp('Manual lock from settings')
+                securityService.lockApp()
               }}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
             >
@@ -1545,7 +1546,7 @@ const SettingsPage = () => {
         isOpen={showPinModal}
         onClose={() => setShowPinModal(false)}
         onSubmit={async (pin) => {
-          const success = await securityService.setPin(pin)
+          const success = await securityService.setupPin(pin)
           if (success) {
             toast.success('PIN set', 'Security PIN has been configured')
           }

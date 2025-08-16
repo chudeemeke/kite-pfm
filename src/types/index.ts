@@ -384,3 +384,36 @@ export interface KeyDerivation {
   iterations: number
   keyLength: number
 }
+
+// Backup types
+export interface Backup {
+  id: string
+  name: string
+  createdAt: Date
+  size: number
+  type: 'manual' | 'automatic'
+  encryptedData?: string
+  metadata: {
+    accounts: number
+    transactions: number
+    categories: number
+    budgets: number
+    goals?: number
+    version: string
+  }
+}
+
+export interface BackupData {
+  accounts: Account[]
+  transactions: Transaction[]
+  categories: Category[]
+  budgets: Budget[]
+  rules?: Rule[]
+  subscriptions?: Subscription[]
+  goals?: Goal[]
+  goalMilestones?: GoalMilestone[]
+  goalContributions?: GoalContribution[]
+  settings?: Settings
+  exportDate: Date
+  appVersion: string
+}

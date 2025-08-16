@@ -14,7 +14,8 @@ import type {
   Goal,
   GoalMilestone,
   GoalContribution,
-  AnomalyInsight
+  AnomalyInsight,
+  Backup
 } from '@/types'
 
 export class KiteDatabase extends Dexie {
@@ -34,6 +35,7 @@ export class KiteDatabase extends Dexie {
   goalMilestones!: Table<GoalMilestone, string>
   goalContributions!: Table<GoalContribution, string>
   anomalyInsights!: Table<AnomalyInsight, string>
+  backups!: Table<Backup, string>
 
   constructor() {
     super('KiteDatabase')
@@ -137,6 +139,27 @@ export class KiteDatabase extends Dexie {
       anomalyInsights: 'id, type, severity, detectedAt, dismissed, [type+detectedAt], [dismissed+detectedAt]'
     })
 
+    // Version 6 - Add backups table for storing backup data
+    this.version(6).stores({
+      accounts: 'id, name, type, currency, balance, createdAt, archivedAt',
+      transactions: 'id, accountId, date, amount, currency, description, merchant, categoryId, isSubscription, metadata, [accountId+date], [categoryId+date]',
+      categories: 'id, name, icon, color, parentId',
+      budgets: 'id, categoryId, month, amount, carryStrategy, [categoryId+month]',
+      rules: 'id, name, enabled, priority, stopProcessing',
+      subscriptions: 'id, name, cadence, amount, currency, nextDueDate, accountId, categoryId',
+      appMeta: 'id, schemaVersion, appVersion, createdAt, updatedAt',
+      users: 'id, email, name, createdAt, lastActiveAt',
+      securityCredentials: 'id, userId, type, credentialId, encryptedData, deviceName, createdAt, lastUsedAt, [userId+type]',
+      securitySettings: 'id, userId, autoLockMinutes, privacyMode, biometricEnabled, pinEnabled, updatedAt',
+      settings: 'id, value, createdAt, updatedAt',
+      goals: 'id, userId, name, type, category, status, priority, targetDate, createdAt, [userId+status], [userId+targetDate]',
+      goalMilestones: 'id, goalId, targetAmount, achievedAt, [goalId+achievedAt]',
+      goalContributions: 'id, goalId, date, amount, source, [goalId+date]',
+      anomalyInsights: 'id, type, severity, detectedAt, dismissed, [type+detectedAt], [dismissed+detectedAt]',
+      // New backup table
+      backups: 'id, name, type, createdAt, size, [type+createdAt]'
+    })
+
     // Hook for schema upgrades - track migrations in appMeta
     this.on('ready', async () => {
       await this.trackMigration()
@@ -201,6 +224,11 @@ export class KiteDatabase extends Dexie {
         clearPromises.push(this.anomalyInsights.clear())
       }
       
+      // Clear backups table if exists
+      if (this.backups) {
+        clearPromises.push(this.backups.clear())
+      }
+      
       await Promise.all(clearPromises)
       // Keep appMeta but update timestamp
       const meta = await this.appMeta.get('singleton')
@@ -235,11 +263,10 @@ export const {
   users,
   securityCredentials,
   securitySettings,
-  settings
+  settings,
+  goals,
+  goalMilestones,
+  goalContributions,
+  anomalyInsights,
+  backups
 } = db
-
-// Export new tables (will exist after migration)
-export const goals = (db as any).goals
-export const goalMilestones = (db as any).goalMilestones
-export const goalContributions = (db as any).goalContributions
-export const anomalyInsights = (db as any).anomalyInsights

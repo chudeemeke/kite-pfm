@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { UIState, Toast } from '@/types'
+import { createIndexedDBStorage } from './indexedDBStorageTyped'
 
 interface UIStore extends UIState {
   // Theme actions
@@ -114,6 +115,7 @@ export const useUIStore = create<UIStore>()(
     }),
     {
       name: 'kite-ui-store',
+      storage: createIndexedDBStorage<Pick<UIStore, 'theme' | 'tourProgress'>>(),
       partialize: (state) => ({
         theme: state.theme,
         tourProgress: state.tourProgress

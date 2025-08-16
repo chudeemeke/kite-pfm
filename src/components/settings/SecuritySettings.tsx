@@ -13,11 +13,10 @@ export const SecuritySettings = () => {
   const { profile, privacy, updatePrivacy } = useSettingsStore()
   const { 
     isPinEnabled,
-    setPin,
+    setupPin,
     removePin,
     enableBiometric,
     disableBiometric,
-    isBiometricAvailable,
     lockApp
   } = useSecurity()
   
@@ -34,7 +33,8 @@ export const SecuritySettings = () => {
   }, [])
   
   const checkBiometricSupport = async () => {
-    const available = await isBiometricAvailable()
+    const { biometricAuth } = await import('@/services/biometric')
+    const available = await biometricAuth.isSupported()
     setBiometricSupported(available)
     
     if (available) {
@@ -102,11 +102,8 @@ export const SecuritySettings = () => {
     }
     
     try {
-      const userId = 'default-user' // Use default user ID for now
-      
-      // Set up PIN in both services
-      await pinAuth.setupPIN(userId, newPin)
-      await setPin(newPin, currentPin || undefined)
+      // Set up PIN
+      await setupPin(newPin)
       
       setShowPinSetup(false)
       setCurrentPin('')
@@ -130,7 +127,7 @@ export const SecuritySettings = () => {
       
       // Remove PIN from both services
       await pinAuth.removePIN(userId)
-      const success = removePin(currentPin)
+      const success = await removePin()
       
       if (success) {
         setCurrentPin('')
@@ -380,7 +377,7 @@ export const SecuritySettings = () => {
             
             <div className="mt-4">
               <button
-                onClick={() => lockApp('Manual test from settings')}
+                onClick={() => lockApp()}
                 className="btn-primary flex items-center gap-2"
               >
                 <Lock className="w-4 h-4" />

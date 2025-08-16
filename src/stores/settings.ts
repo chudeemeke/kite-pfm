@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { createIndexedDBStorage } from './indexedDBStorageTyped'
 
 // Settings types
 export interface ProfileSettings {
@@ -250,6 +251,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'kite-settings-store',
+      storage: createIndexedDBStorage<SettingsStore>(),
       version: 1
     }
   )

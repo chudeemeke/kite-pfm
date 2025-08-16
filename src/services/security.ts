@@ -1,4 +1,10 @@
+/**
+ * Security Service - Refactored to use IndexedDB
+ * Manages app security state using proper database storage
+ */
+
 import React from 'react'
+import { db } from '@/db/schema'
 import { useSettingsStore } from '@/stores/settings'
 import { toast } from '@/stores'
 
@@ -20,22 +26,27 @@ class SecurityService {
   }
   
   private listeners: Array<(state: SecurityState) => void> = []
-  private activityTimeout: number | null = null
-  private storedPin: string | null = null
+  private activityTimeout: ReturnType<typeof setTimeout> | null = null
+  private userId = 'default-user'
+  private initialized = false
 
   constructor() {
-    this.loadSecurityState()
-    this.setupActivityListeners()
+    // Constructor should be lightweight
+    // Initialization happens in init()
   }
 
-  init() {
+  async init() {
+    if (this.initialized) return
+    
+    await this.loadSecurityState()
+    this.setupActivityListeners()
+    
     const settings = useSettingsStore.getState()
     this.state.sessionTimeout = settings.privacy.autoLockTimer * 60 * 1000
-    this.state.pinEnabled = this.storedPin !== null
-    this.state.biometricEnabled = settings.privacy.biometricUnlock
     
     this.resetActivityTimer()
     this.notifyListeners()
+    this.initialized = true
   }
 
   cleanup() {
@@ -43,33 +54,62 @@ class SecurityService {
       clearTimeout(this.activityTimeout)
     }
     this.removeActivityListeners()
+    this.initialized = false
   }
 
-  private loadSecurityState() {
+  private async loadSecurityState() {
     try {
-      const stored = localStorage.getItem('kite-security-state')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        this.state = {
-          ...this.state,
-          ...parsed,
-          lastActivity: new Date(parsed.lastActivity)
-        }
+      // Load security settings from database
+      const securitySettings = await db.securitySettings.get(`security-${this.userId}`)
+      
+      if (securitySettings) {
+        this.state.pinEnabled = securitySettings.pinEnabled
+        this.state.biometricEnabled = securitySettings.biometricEnabled
+        this.state.sessionTimeout = (securitySettings.autoLockMinutes || 5) * 60 * 1000
       }
       
-      // Load stored PIN
-      this.storedPin = localStorage.getItem('kite-security-pin')
+      // Load last activity from database
+      const lastActivitySetting = await db.settings.get('last-activity')
+      if (lastActivitySetting && lastActivitySetting.value) {
+        this.state.lastActivity = new Date(lastActivitySetting.value)
+      }
+      
+      // Load lock state from database
+      const lockStateSetting = await db.settings.get('app-lock-state')
+      if (lockStateSetting && lockStateSetting.value) {
+        const lockState = JSON.parse(lockStateSetting.value)
+        this.state.isLocked = lockState.isLocked || false
+      }
+      
+      // Check if PIN exists
+      const pinCredential = await db.securityCredentials.get(`pin-${this.userId}`)
+      this.state.pinEnabled = !!pinCredential
+      
     } catch (error) {
       console.error('Failed to load security state:', error)
     }
   }
 
-  private saveSecurityState() {
+  private async saveSecurityState() {
     try {
-      localStorage.setItem('kite-security-state', JSON.stringify({
-        ...this.state,
-        lastActivity: this.state.lastActivity.toISOString()
-      }))
+      // Save last activity
+      await db.settings.put({
+        id: 'last-activity',
+        value: this.state.lastActivity.toISOString(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      
+      // Save lock state
+      await db.settings.put({
+        id: 'app-lock-state',
+        value: JSON.stringify({
+          isLocked: this.state.isLocked,
+          timestamp: new Date()
+        }),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
     } catch (error) {
       console.error('Failed to save security state:', error)
     }
@@ -105,10 +145,11 @@ class SecurityService {
   }
 
   private handleActivity = () => {
-    if (this.state.isLocked) return
-    
-    this.state.lastActivity = new Date()
-    this.resetActivityTimer()
+    if (!this.state.isLocked) {
+      this.state.lastActivity = new Date()
+      this.resetActivityTimer()
+      this.saveSecurityState()
+    }
   }
 
   private resetActivityTimer() {
@@ -118,203 +159,238 @@ class SecurityService {
 
     if (this.state.sessionTimeout > 0) {
       this.activityTimeout = setTimeout(() => {
-        this.lockApp('Session timeout')
+        this.lockApp()
       }, this.state.sessionTimeout)
     }
   }
 
-  lockApp(reason: string = 'Manual lock') {
+  lockApp() {
     this.state.isLocked = true
     this.saveSecurityState()
     this.notifyListeners()
-    
-    if (this.activityTimeout) {
-      clearTimeout(this.activityTimeout)
-    }
-    
-    toast.info('App locked', reason)
+    toast.info('App locked', 'Enter your PIN to continue')
   }
 
-  async unlockApp(pin?: string, useBiometric: boolean = false): Promise<boolean> {
+  unlockApp() {
+    this.state.isLocked = false
+    this.state.lastActivity = new Date()
+    this.saveSecurityState()
+    this.resetActivityTimer()
+    this.notifyListeners()
+  }
+
+  async verifyPin(pin: string): Promise<boolean> {
     try {
-      if (this.state.pinEnabled && !useBiometric) {
-        if (!pin || !this.verifyPin(pin)) {
-          throw new Error('Invalid PIN')
-        }
+      // Import services dynamically to avoid circular dependencies
+      const { pinAuth } = await import('./biometric')
+      
+      const result = await pinAuth.verifyPIN(this.userId, pin)
+      
+      if (result.success) {
+        this.unlockApp()
+        return true
       }
       
-      if (useBiometric && this.state.biometricEnabled) {
-        const biometricResult = await this.authenticateWithBiometric()
-        if (!biometricResult) {
-          throw new Error('Biometric authentication failed')
-        }
+      if (result.error) {
+        toast.error('Invalid PIN', result.error)
       }
       
-      this.state.isLocked = false
-      this.state.lastActivity = new Date()
-      this.resetActivityTimer()
-      this.saveSecurityState()
-      this.notifyListeners()
-      
-      return true
+      return false
     } catch (error) {
-      console.error('Failed to unlock app:', error)
-      toast.error('Unlock failed', error instanceof Error ? error.message : 'Please try again')
+      console.error('PIN verification failed:', error)
+      toast.error('Verification failed', 'Please try again')
       return false
     }
   }
 
-  async setPin(newPin: string, currentPin?: string): Promise<boolean> {
+  async setupPin(pin: string): Promise<boolean> {
     try {
-      // If PIN is already set, verify current PIN first
-      if (this.storedPin && currentPin && !this.verifyPin(currentPin)) {
-        throw new Error('Current PIN is incorrect')
-      }
+      // Import services dynamically to avoid circular dependencies
+      const { pinAuth } = await import('./biometric')
       
-      // Validate new PIN
-      if (newPin.length < 4 || newPin.length > 8) {
-        throw new Error('PIN must be between 4 and 8 digits')
-      }
-      
-      if (!/^\d+$/.test(newPin)) {
-        throw new Error('PIN must contain only numbers')
-      }
-      
-      // Hash and store the PIN (in a real app, use proper encryption)
-      const hashedPin = btoa(newPin) // Basic encoding, use proper hashing in production
-      localStorage.setItem('kite-security-pin', hashedPin)
-      this.storedPin = hashedPin
+      await pinAuth.setupPIN(this.userId, pin)
       
       this.state.pinEnabled = true
-      this.saveSecurityState()
+      
+      // Update security settings in database
+      const settingsId = `security-${this.userId}`
+      const existing = await db.securitySettings.get(settingsId)
+      
+      if (existing) {
+        await db.securitySettings.update(settingsId, {
+          pinEnabled: true,
+          updatedAt: new Date()
+        })
+      } else {
+        await db.securitySettings.add({
+          id: settingsId,
+          userId: this.userId,
+          autoLockMinutes: 5,
+          privacyMode: false,
+          biometricEnabled: false,
+          pinEnabled: true,
+          updatedAt: new Date()
+        })
+      }
+      
+      await this.saveSecurityState()
       this.notifyListeners()
       
-      toast.success('PIN updated', 'Your security PIN has been set')
+      toast.success('PIN created', 'Your PIN has been set successfully')
       return true
-    } catch (error) {
-      console.error('Failed to set PIN:', error)
-      toast.error('Failed to set PIN', error instanceof Error ? error.message : 'Please try again')
+    } catch (error: any) {
+      console.error('Failed to setup PIN:', error)
+      toast.error('Setup failed', error.message || 'Failed to create PIN')
       return false
     }
   }
 
-  removePin(currentPin: string): boolean {
+  async removePin(): Promise<boolean> {
     try {
-      if (!this.verifyPin(currentPin)) {
-        throw new Error('Current PIN is incorrect')
+      // Import services dynamically to avoid circular dependencies
+      const { pinAuth } = await import('./biometric')
+      
+      await pinAuth.removePIN(this.userId)
+      
+      this.state.pinEnabled = false
+      
+      // Update security settings in database
+      const settingsId = `security-${this.userId}`
+      const existing = await db.securitySettings.get(settingsId)
+      
+      if (existing) {
+        await db.securitySettings.update(settingsId, {
+          pinEnabled: false,
+          updatedAt: new Date()
+        })
       }
       
-      localStorage.removeItem('kite-security-pin')
-      this.storedPin = null
-      this.state.pinEnabled = false
-      this.saveSecurityState()
+      await this.saveSecurityState()
       this.notifyListeners()
       
-      toast.success('PIN removed', 'Security PIN has been disabled')
+      toast.success('PIN removed', 'Your PIN has been removed')
       return true
     } catch (error) {
       console.error('Failed to remove PIN:', error)
-      toast.error('Failed to remove PIN', error instanceof Error ? error.message : 'Please try again')
+      toast.error('Removal failed', 'Failed to remove PIN')
       return false
     }
   }
 
-  private verifyPin(pin: string): boolean {
-    if (!this.storedPin) return false
+  async updateSessionTimeout(minutes: number) {
+    this.state.sessionTimeout = minutes * 60 * 1000
     
-    try {
-      const decodedPin = atob(this.storedPin)
-      return pin === decodedPin
-    } catch (error) {
-      console.error('Failed to verify PIN:', error)
-      return false
+    // Update in database
+    const settingsId = `security-${this.userId}`
+    const existing = await db.securitySettings.get(settingsId)
+    
+    if (existing) {
+      await db.securitySettings.update(settingsId, {
+        autoLockMinutes: minutes,
+        updatedAt: new Date()
+      })
+    } else {
+      await db.securitySettings.add({
+        id: settingsId,
+        userId: this.userId,
+        autoLockMinutes: minutes,
+        privacyMode: false,
+        biometricEnabled: false,
+        pinEnabled: false,
+        updatedAt: new Date()
+      })
     }
+    
+    this.resetActivityTimer()
+    await this.saveSecurityState()
+    this.notifyListeners()
   }
 
   async enableBiometric(): Promise<boolean> {
     try {
-      if (!('credentials' in navigator)) {
-        throw new Error('Biometric authentication not supported')
+      // Import services dynamically to avoid circular dependencies
+      const { biometricAuth } = await import('./biometric')
+      
+      const isSupported = await biometricAuth.isSupported()
+      if (!isSupported) {
+        toast.error('Not supported', 'Biometric authentication is not available on this device')
+        return false
       }
       
-      const credential = await navigator.credentials.create({
-        publicKey: {
-          challenge: new Uint8Array(32),
-          rp: { name: 'Kite Finance' },
-          user: {
-            id: new TextEncoder().encode('kite-user'),
-            name: 'kite-user',
-            displayName: 'Kite User'
-          },
-          pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
-          timeout: 60000,
-          authenticatorSelection: {
-            authenticatorAttachment: 'platform',
-            userVerification: 'required'
-          }
-        }
-      })
+      const success = await biometricAuth.register(this.userId)
       
-      if (credential) {
+      if (success) {
         this.state.biometricEnabled = true
-        this.saveSecurityState()
-        this.notifyListeners()
         
-        // Update settings store
-        useSettingsStore.getState().updatePrivacy({ biometricUnlock: true })
+        // Update security settings in database
+        const settingsId = `security-${this.userId}`
+        const existing = await db.securitySettings.get(settingsId)
+        
+        if (existing) {
+          await db.securitySettings.update(settingsId, {
+            biometricEnabled: true,
+            updatedAt: new Date()
+          })
+        } else {
+          await db.securitySettings.add({
+            id: settingsId,
+            userId: this.userId,
+            autoLockMinutes: 5,
+            privacyMode: false,
+            biometricEnabled: true,
+            pinEnabled: false,
+            updatedAt: new Date()
+          })
+        }
+        
+        await this.saveSecurityState()
+        this.notifyListeners()
         
         toast.success('Biometric enabled', 'You can now use biometric authentication')
         return true
       }
       
       return false
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to enable biometric:', error)
-      toast.error('Biometric setup failed', 'Your device may not support biometric authentication')
+      toast.error('Setup failed', error.message || 'Failed to enable biometric authentication')
       return false
     }
   }
 
-  disableBiometric() {
-    this.state.biometricEnabled = false
-    this.saveSecurityState()
-    this.notifyListeners()
-    
-    // Update settings store
-    useSettingsStore.getState().updatePrivacy({ biometricUnlock: false })
-    
-    toast.success('Biometric disabled', 'Biometric authentication has been turned off')
-  }
-
-  private async authenticateWithBiometric(): Promise<boolean> {
+  async disableBiometric(): Promise<boolean> {
     try {
-      if (!('credentials' in navigator)) {
-        throw new Error('Biometric authentication not supported')
+      // Import services dynamically to avoid circular dependencies
+      const { biometricAuth } = await import('./biometric')
+      
+      await biometricAuth.unregister(this.userId)
+      
+      this.state.biometricEnabled = false
+      
+      // Update security settings in database
+      const settingsId = `security-${this.userId}`
+      const existing = await db.securitySettings.get(settingsId)
+      
+      if (existing) {
+        await db.securitySettings.update(settingsId, {
+          biometricEnabled: false,
+          updatedAt: new Date()
+        })
       }
       
-      const credential = await navigator.credentials.get({
-        publicKey: {
-          challenge: new Uint8Array(32),
-          timeout: 60000,
-          userVerification: 'required'
-        }
-      })
+      await this.saveSecurityState()
+      this.notifyListeners()
       
-      return credential !== null
+      toast.success('Biometric disabled', 'Biometric authentication has been disabled')
+      return true
     } catch (error) {
-      console.error('Biometric authentication failed:', error)
+      console.error('Failed to disable biometric:', error)
+      toast.error('Removal failed', 'Failed to disable biometric authentication')
       return false
     }
   }
 
-  updateSessionTimeout(minutes: number) {
-    this.state.sessionTimeout = minutes * 60 * 1000
-    this.saveSecurityState()
-    this.resetActivityTimer()
-    this.notifyListeners()
-  }
-
-  getSecurityState(): SecurityState {
+  getState(): SecurityState {
     return { ...this.state }
   }
 
@@ -329,49 +405,43 @@ class SecurityService {
   isLocked(): boolean {
     return this.state.isLocked
   }
-
-  getLastActivity(): Date {
-    return this.state.lastActivity
-  }
-
-  // Check if biometric is available on the device
-  async isBiometricAvailable(): Promise<boolean> {
-    try {
-      if (!('credentials' in navigator) || !('PublicKeyCredential' in window)) {
-        return false
-      }
-      
-      const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-      return available
-    } catch (error) {
-      return false
-    }
-  }
 }
 
 // Export singleton instance
 export const securityService = new SecurityService()
 
-// React hook for using security state
-export const useSecurity = () => {
-  const [securityState, setSecurityState] = React.useState<SecurityState>(securityService.getSecurityState())
-  
+// React hook for using security service
+export function useSecurity() {
+  const [state, setState] = React.useState<SecurityState>(securityService.getState())
+
   React.useEffect(() => {
-    const unsubscribe = securityService.subscribe(setSecurityState)
+    const unsubscribe = securityService.subscribe(setState)
     return unsubscribe
   }, [])
-  
+
   return {
-    ...securityState,
-    lockApp: securityService.lockApp.bind(securityService),
-    unlockApp: securityService.unlockApp.bind(securityService),
-    setPin: securityService.setPin.bind(securityService),
-    removePin: securityService.removePin.bind(securityService),
-    enableBiometric: securityService.enableBiometric.bind(securityService),
-    disableBiometric: securityService.disableBiometric.bind(securityService),
-    updateSessionTimeout: securityService.updateSessionTimeout.bind(securityService),
-    isBiometricAvailable: securityService.isBiometricAvailable.bind(securityService),
-    isPinEnabled: securityService.isPinEnabled.bind(securityService),
-    isBiometricEnabled: securityService.isBiometricEnabled.bind(securityService)
+    ...state,
+    lockApp: () => securityService.lockApp(),
+    unlockApp: () => securityService.unlockApp(),
+    verifyPin: (pin: string) => securityService.verifyPin(pin),
+    setupPin: (pin: string) => securityService.setupPin(pin),
+    removePin: () => securityService.removePin(),
+    updateSessionTimeout: (minutes: number) => securityService.updateSessionTimeout(minutes),
+    enableBiometric: () => securityService.enableBiometric(),
+    disableBiometric: () => securityService.disableBiometric(),
+    isPinEnabled: () => securityService.isPinEnabled(),
+    isBiometricEnabled: () => securityService.isBiometricEnabled()
   }
 }
+
+// Export individual functions for convenience
+export const lockApp = () => securityService.lockApp()
+export const unlockApp = () => securityService.unlockApp()
+export const verifyPin = (pin: string) => securityService.verifyPin(pin)
+export const setupPin = (pin: string) => securityService.setupPin(pin)
+export const removePin = () => securityService.removePin()
+export const updateSessionTimeout = (minutes: number) => securityService.updateSessionTimeout(minutes)
+export const enableBiometric = () => securityService.enableBiometric()
+export const disableBiometric = () => securityService.disableBiometric()
+export const isPinEnabled = () => securityService.isPinEnabled()
+export const isBiometricEnabled = () => securityService.isBiometricEnabled()
