@@ -98,6 +98,19 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
     
     try {
       const userId = 'default-user' // Use default user ID for now
+      
+      // Check if PIN exists in storage first
+      const storedPin = localStorage.getItem('kite-pin-default-user')
+      if (!storedPin) {
+        // No PIN set - this is first time setup
+        // For demo purposes, set the entered PIN as the new PIN
+        const hashedPin = await pinAuth.hashPIN(pin)
+        localStorage.setItem('kite-pin-default-user', hashedPin)
+        toast.success('PIN created', 'Your PIN has been set successfully!')
+        setTimeout(onUnlock, 300)
+        return
+      }
+      
       const result = await pinAuth.verifyPIN(userId, pin)
       
       if (result.success) {
@@ -157,7 +170,9 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
           {greeting}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-8">
-          Authenticate to access your finances
+          {localStorage.getItem('kite-pin-default-user') 
+            ? 'Authenticate to access your finances'
+            : 'Create a 6-digit PIN to secure your app'}
         </p>
         
         {/* Authentication Method */}
