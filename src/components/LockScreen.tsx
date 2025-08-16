@@ -6,7 +6,7 @@
 
 import { useState, useEffect } from 'react'
 import { Fingerprint, Lock, Shield, AlertCircle, Smartphone } from 'lucide-react'
-import { biometricAuth, pinAuth } from '@/services/biometric'
+import { biometricAuth } from '@/services/biometric'
 import { useSecurity } from '@/services/security'
 import { useSettingsStore, toast } from '@/stores'
 import { getGreeting } from '@/services/greeting'
