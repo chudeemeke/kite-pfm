@@ -6,7 +6,15 @@ import type {
   Budget,
   Rule,
   Subscription,
-  AppMeta
+  AppMeta,
+  User,
+  SecurityCredential,
+  SecuritySettings,
+  Settings,
+  Goal,
+  GoalMilestone,
+  GoalContribution,
+  AnomalyInsight
 } from '@/types'
 
 export class KiteDatabase extends Dexie {
@@ -18,6 +26,14 @@ export class KiteDatabase extends Dexie {
   rules!: Table<Rule, string>
   subscriptions!: Table<Subscription, string>
   appMeta!: Table<AppMeta, 'singleton'>
+  users!: Table<User, string>
+  securityCredentials!: Table<SecurityCredential, string>
+  securitySettings!: Table<SecuritySettings, string>
+  settings!: Table<Settings, string>
+  goals!: Table<Goal, string>
+  goalMilestones!: Table<GoalMilestone, string>
+  goalContributions!: Table<GoalContribution, string>
+  anomalyInsights!: Table<AnomalyInsight, string>
 
   constructor() {
     super('KiteDatabase')
@@ -60,6 +76,65 @@ export class KiteDatabase extends Dexie {
           transaction.metadata = {}
         }
       })
+    })
+
+    // Version 4 - Add security and user management tables
+    this.version(4).stores({
+      accounts: 'id, name, type, currency, balance, createdAt, archivedAt',
+      transactions: 'id, accountId, date, amount, currency, description, merchant, categoryId, isSubscription, metadata, [accountId+date], [categoryId+date]',
+      categories: 'id, name, icon, color, parentId',
+      budgets: 'id, categoryId, month, amount, carryStrategy, [categoryId+month]',
+      rules: 'id, name, enabled, priority, stopProcessing',
+      subscriptions: 'id, name, cadence, amount, currency, nextDueDate, accountId, categoryId',
+      appMeta: 'id, schemaVersion, appVersion, createdAt, updatedAt',
+      // New security tables
+      users: 'id, email, name, createdAt, lastActiveAt',
+      securityCredentials: 'id, userId, type, credentialId, encryptedData, deviceName, createdAt, lastUsedAt, [userId+type]',
+      securitySettings: 'id, userId, autoLockMinutes, privacyMode, biometricEnabled, pinEnabled, updatedAt',
+      settings: 'id, value, createdAt, updatedAt'
+    }).upgrade(async tx => {
+      // Create default user if none exists
+      const users = await tx.table('users').toArray()
+      if (users.length === 0) {
+        await tx.table('users').add({
+          id: 'default-user',
+          email: 'user@kite.app',
+          name: 'User',
+          createdAt: new Date(),
+          lastActiveAt: new Date()
+        })
+        
+        // Create default security settings
+        await tx.table('securitySettings').add({
+          id: 'security-default-user',
+          userId: 'default-user',
+          autoLockMinutes: 5,
+          privacyMode: false,
+          biometricEnabled: false,
+          pinEnabled: false,
+          updatedAt: new Date()
+        })
+      }
+    })
+
+    // Version 5 - Add goals and insights tables
+    this.version(5).stores({
+      accounts: 'id, name, type, currency, balance, createdAt, archivedAt',
+      transactions: 'id, accountId, date, amount, currency, description, merchant, categoryId, isSubscription, metadata, [accountId+date], [categoryId+date]',
+      categories: 'id, name, icon, color, parentId',
+      budgets: 'id, categoryId, month, amount, carryStrategy, [categoryId+month]',
+      rules: 'id, name, enabled, priority, stopProcessing',
+      subscriptions: 'id, name, cadence, amount, currency, nextDueDate, accountId, categoryId',
+      appMeta: 'id, schemaVersion, appVersion, createdAt, updatedAt',
+      users: 'id, email, name, createdAt, lastActiveAt',
+      securityCredentials: 'id, userId, type, credentialId, encryptedData, deviceName, createdAt, lastUsedAt, [userId+type]',
+      securitySettings: 'id, userId, autoLockMinutes, privacyMode, biometricEnabled, pinEnabled, updatedAt',
+      settings: 'id, value, createdAt, updatedAt',
+      // New tables for goals and insights
+      goals: 'id, userId, name, type, category, status, priority, targetDate, createdAt, [userId+status], [userId+targetDate]',
+      goalMilestones: 'id, goalId, targetAmount, achievedAt, [goalId+achievedAt]',
+      goalContributions: 'id, goalId, date, amount, source, [goalId+date]',
+      anomalyInsights: 'id, type, severity, detectedAt, dismissed, [type+detectedAt], [dismissed+detectedAt]'
     })
 
     // Hook for schema upgrades - track migrations in appMeta
@@ -107,14 +182,26 @@ export class KiteDatabase extends Dexie {
   // Helper method to clear all data (for reset functionality)
   async clearAllData(): Promise<void> {
     await this.transaction('rw', this.tables, async () => {
-      await Promise.all([
+      const clearPromises = [
         this.accounts.clear(),
         this.transactions.clear(),
         this.categories.clear(),
         this.budgets.clear(),
         this.rules.clear(),
-        this.subscriptions.clear()
-      ])
+        this.subscriptions.clear(),
+        this.securityCredentials.clear(),
+        // Don't clear users or security settings - preserve security config
+      ]
+      
+      // Clear new tables if they exist (after migration)
+      if (this.goals) {
+        clearPromises.push(this.goals.clear())
+        clearPromises.push(this.goalMilestones.clear())
+        clearPromises.push(this.goalContributions.clear())
+        clearPromises.push(this.anomalyInsights.clear())
+      }
+      
+      await Promise.all(clearPromises)
       // Keep appMeta but update timestamp
       const meta = await this.appMeta.get('singleton')
       if (meta) {
@@ -144,5 +231,15 @@ export const {
   budgets,
   rules,
   subscriptions,
-  appMeta
+  appMeta,
+  users,
+  securityCredentials,
+  securitySettings,
+  settings
 } = db
+
+// Export new tables (will exist after migration)
+export const goals = (db as any).goals
+export const goalMilestones = (db as any).goalMilestones
+export const goalContributions = (db as any).goalContributions
+export const anomalyInsights = (db as any).anomalyInsights

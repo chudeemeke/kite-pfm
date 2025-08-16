@@ -15,7 +15,8 @@ import {
 } from 'lucide-react'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { ListItem, ListItemAction, ListItemGroup } from '@/components/shared/ListItem'
+import { ListItemAction, ListItemGroup } from '@/components/shared/ListItem'
+import { SwipeableListItem, useSwipeableList } from '@/components/shared/SwipeableListItem'
 import { PremiumCategoryIconRenderer } from '@/components/icons/PremiumCategoryIcons'
 
 /**
@@ -74,6 +75,9 @@ const ActivityPage = () => {
   
   const { getCategoryById, fetchCategories, categories } = useCategoriesStore()
   const { getAccountById, fetchAccounts, accounts } = useAccountsStore()
+  
+  // Swipeable list state management
+  const { handleSwipeStart, handleSwipeEnd } = useSwipeableList()
   
   // Local state
   const [searchTerm, setSearchTerm] = useState('')
@@ -478,33 +482,41 @@ const ActivityPage = () => {
           const displayAmount = transaction.amount >= 0 ? `+${formattedAmount}` : `-${formattedAmount}`
           
           return (
-            <ListItem
+            <SwipeableListItem
               key={transaction.id}
-              selectable
-              selected={isSelected}
-              onSelectChange={() => handleSelectTransaction(transaction.id)}
-              icon={category ? <PremiumCategoryIconRenderer category={category.name} size={20} /> : undefined}
-              title={transaction.description}
-              subtitle={subtitle}
-              metadata={transaction.date ? formatRelativeDate(transaction.date) : 'No date'}
-              value={displayAmount}
-              valueColor={transaction.amount >= 0 ? 'success' : 'default'}
-              onClick={() => handleTransactionClick(transaction)}
-              actions={
-                <>
-                  <ListItemAction
-                    icon={<Edit2 />}
-                    onClick={() => setEditingTransaction(transaction)}
-                    label="Edit transaction"
-                  />
-                  <ListItemAction
-                    icon={<Trash2 />}
-                    onClick={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
-                    variant="danger"
-                    label="Delete transaction"
-                  />
-                </>
-              }
+              onDelete={() => handleDeleteTransaction(transaction.id)}
+              onSwipeStart={() => handleSwipeStart(transaction.id)}
+              onSwipeEnd={handleSwipeEnd}
+              deleteLabel="Delete"
+              deleteConfirmation={false}
+              threshold={80}
+              listItemProps={{
+                selectable: true,
+                selected: isSelected,
+                onSelectChange: () => handleSelectTransaction(transaction.id),
+                icon: category ? <PremiumCategoryIconRenderer category={category.name} size={20} /> : undefined,
+                title: transaction.description,
+                subtitle: subtitle,
+                metadata: transaction.date ? formatRelativeDate(transaction.date) : 'No date',
+                value: displayAmount,
+                valueColor: transaction.amount >= 0 ? 'success' : 'default',
+                onClick: () => handleTransactionClick(transaction),
+                actions: (
+                  <>
+                    <ListItemAction
+                      icon={<Edit2 />}
+                      onClick={() => setEditingTransaction(transaction)}
+                      label="Edit transaction"
+                    />
+                    <ListItemAction
+                      icon={<Trash2 />}
+                      onClick={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
+                      variant="danger"
+                      label="Delete transaction"
+                    />
+                  </>
+                )
+              }}
             />
           )
         })}

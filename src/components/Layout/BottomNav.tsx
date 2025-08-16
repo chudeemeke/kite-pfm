@@ -4,6 +4,7 @@ import {
   Home, 
   Activity, 
   PieChart, 
+  Target,
   CreditCard, 
   TrendingUp, 
   Settings,
@@ -60,6 +61,7 @@ const BottomNav = () => {
     { path: '/', icon: Home, label: 'Home' },
     { path: '/tx', icon: Activity, label: 'Activity' },
     { path: '/budgets', icon: PieChart, label: 'Budgets' },
+    { path: '/goals', icon: Target, label: 'Goals' },
     { path: '/accounts', icon: CreditCard, label: 'Accounts' },
     { path: '/insights', icon: TrendingUp, label: 'Insights' },
     { path: '/settings', icon: Settings, label: 'Settings' }
@@ -71,15 +73,17 @@ const BottomNav = () => {
   
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 bottom-nav-safe">
-      <div className="max-w-md mx-auto px-2 py-2">
+      <div className="max-w-lg mx-auto px-2 py-2">
         <div className="flex items-center justify-around relative">
-          {navItems.slice(0, 3).map((item) => (
+          {/* First row of nav items */}
+          {navItems.slice(0, 4).map((item) => (
             <NavItem
               key={item.path}
               path={item.path}
               icon={item.icon}
               label={item.label}
-              isActive={location.pathname === item.path}
+              isActive={location.pathname === item.path || 
+                       (item.path === '/goals' && location.pathname.startsWith('/goals'))}
               onClick={() => navigate(item.path)}
             />
           ))}
@@ -88,21 +92,22 @@ const BottomNav = () => {
           <button
             onClick={handleAddClick}
             className={cn(
-              'w-14 h-14 rounded-full',
+              'w-12 h-12 rounded-full',
               'bg-gradient-to-r from-primary-500 to-primary-600',
               'hover:from-primary-600 hover:to-primary-700',
               'flex items-center justify-center',
               'shadow-lg hover:shadow-xl',
-              'transform hover:scale-110 active:scale-95 transition-all duration-200',
-              'absolute left-1/2 -translate-x-1/2 -top-7',
+              'transform active:scale-95 transition-transform duration-150',
+              'absolute right-4 -top-6',
               'focus:outline-none focus:ring-4 focus:ring-primary-500/30'
             )}
             aria-label="Quick Add"
           >
-            <Plus className="w-7 h-7 text-white" />
+            <Plus className="w-6 h-6 text-white" />
           </button>
           
-          {navItems.slice(3).map((item) => (
+          {/* Remaining nav items */}
+          {navItems.slice(4).map((item) => (
             <NavItem
               key={item.path}
               path={item.path}

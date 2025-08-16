@@ -6,18 +6,20 @@ import { useInitializeStores, useUIStore, useSettingsStore } from './stores'
 import { demoService } from './services'
 import { settingsService } from './services/settingsApplication'
 import { notificationService } from './services/notifications'
-import { securityService } from './services/security'
+import { securityService, useSecurity } from './services/security'
 
 // Layout components
 import Layout from './components/Layout/Layout'
 import ErrorBoundary from './components/ErrorBoundary'
 import LoadingSpinner from './components/LoadingSpinner'
 import ToastContainer from './components/ToastContainer'
+import LockScreen from './components/LockScreen'
 
 // Pages
 import HomePage from './pages/Home'
 import ActivityPage from './pages/Activity'
 import BudgetsPage from './pages/Budgets'
+import GoalsPage from './pages/Goals'
 import AccountsPage from './pages/Accounts'
 import AccountDetail from './pages/AccountDetail'
 import InsightsPage from './pages/Insights'
@@ -30,6 +32,7 @@ function App() {
   const { initializeStores } = useInitializeStores()
   const tourProgress = useUIStore(state => state.tourProgress)
   const { privacy } = useSettingsStore()
+  const { isLocked, unlockApp } = useSecurity()
   
   // Check if database is initialized
   const appMeta = useLiveQuery(() => db.appMeta.get('singleton'))
@@ -112,6 +115,16 @@ function App() {
     )
   }
   
+  // Show lock screen if app is locked
+  if (isLocked) {
+    return (
+      <ErrorBoundary>
+        <LockScreen onUnlock={() => unlockApp()} />
+        <ToastContainer />
+      </ErrorBoundary>
+    )
+  }
+  
   return (
     <ErrorBoundary>
       <BrowserRouter basename={import.meta.env.BASE_URL || '/'}>
@@ -121,6 +134,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/tx" element={<ActivityPage />} />
             <Route path="/budgets" element={<BudgetsPage />} />
+            <Route path="/goals" element={<GoalsPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/insights" element={<InsightsPage />} />

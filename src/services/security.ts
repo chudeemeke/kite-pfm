@@ -370,6 +370,8 @@ export const useSecurity = () => {
     enableBiometric: securityService.enableBiometric.bind(securityService),
     disableBiometric: securityService.disableBiometric.bind(securityService),
     updateSessionTimeout: securityService.updateSessionTimeout.bind(securityService),
-    isBiometricAvailable: securityService.isBiometricAvailable.bind(securityService)
+    isBiometricAvailable: securityService.isBiometricAvailable.bind(securityService),
+    isPinEnabled: securityService.isPinEnabled.bind(securityService),
+    isBiometricEnabled: securityService.isBiometricEnabled.bind(securityService)
   }
 }

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useAccountsStore, useTransactionsStore, useSettingsStore } from '@/stores'
 import { formatCurrency } from '@/services'
 import { getGreeting } from '@/services/greeting'
-import { TrendingUp, TrendingDown, DollarSign, AlertCircle } from 'lucide-react'
+import { TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
+import { AccountIconRenderer } from '@/components/icons/AccountIcons'
 import { cn } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
@@ -57,12 +58,39 @@ const HomePage = () => {
     fetchAccounts()
     fetchTransactions()
     
-    // Set dynamic greeting
+    // Set intelligent dynamic greeting with context
     const userName = profile?.name || 'there'
+    const balance = getTotalBalance()
+    
+    // Determine last visit (simplified - in production, track this properly)
+    const lastVisit = sessionStorage.getItem('lastVisit')
+    const now = Date.now()
+    let visitContext: 'today' | 'yesterday' | 'thisWeek' | 'longer' = 'today'
+    
+    if (lastVisit) {
+      const timeDiff = now - parseInt(lastVisit)
+      const hoursDiff = timeDiff / (1000 * 60 * 60)
+      
+      if (hoursDiff < 2) visitContext = 'today'
+      else if (hoursDiff < 24) visitContext = 'yesterday'
+      else if (hoursDiff < 168) visitContext = 'thisWeek'
+      else visitContext = 'longer'
+    }
+    
+    sessionStorage.setItem('lastVisit', now.toString())
+    sessionStorage.setItem('visitCount', ((parseInt(sessionStorage.getItem('visitCount') || '0')) + 1).toString())
+    
+    // Calculate streak (simplified - in production, track properly)
+    const visitCount = parseInt(sessionStorage.getItem('visitCount') || '0')
+    const streakDays = Math.min(visitCount, 30) // Cap at 30 for demo
+    
     const dynamicGreeting = getGreeting({ 
       userName: userName === 'User' ? 'there' : userName,
-      includeMotivation: Math.random() > 0.5,
-      formality: 'friendly'
+      hasRecentActivity: visitContext === 'today' && visitCount > 1,
+      streakDays: streakDays > 3 ? streakDays : 0,
+      accountBalance: balance > 1000 ? 'positive' : balance < 0 ? 'negative' : 'neutral',
+      lastVisit: visitContext,
+      mood: Math.random() > 0.7 ? 'witty' : Math.random() > 0.3 ? 'friendly' : 'professional'
     })
     setGreeting(dynamicGreeting)
   }, [])
@@ -187,19 +215,11 @@ const HomePage = () => {
           {accounts.filter(a => !a.archivedAt).slice(0, 4).map((account) => (
             <div key={account.id} className="p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className={cn(
-                  'w-10 h-10 rounded-full flex items-center justify-center',
-                  account.type === 'checking' && 'bg-primary-100 dark:bg-primary-900/20',
-                  account.type === 'savings' && 'bg-success-100 dark:bg-success-900/20',
-                  account.type === 'credit' && 'bg-danger-100 dark:bg-danger-900/20'
-                )}>
-                  <DollarSign className={cn(
-                    'w-5 h-5',
-                    account.type === 'checking' && 'text-primary-600',
-                    account.type === 'savings' && 'text-success-600',
-                    account.type === 'credit' && 'text-danger-600'
-                  )} />
-                </div>
+                <AccountIconRenderer 
+                  accountType={account.type} 
+                  size={40} 
+                  className="filter drop-shadow-sm"
+                />
                 <div>
                   <p className="font-medium text-gray-900 dark:text-gray-100">
                     {account.name}

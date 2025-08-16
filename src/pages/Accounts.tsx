@@ -4,13 +4,18 @@ import { formatCurrency, formatAccountType, formatRelativeDate } from '@/service
 import { Plus, MoreVertical, AlertCircle, Edit2, Archive, Trash2, Star, Activity, X } from 'lucide-react'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import { useNavigate } from 'react-router-dom'
-import { ListItem, ListItemGroup } from '@/components/shared/ListItem'
+import { ListItemGroup } from '@/components/shared/ListItem'
+import { SwipeableListItem, useSwipeableList } from '@/components/shared/SwipeableListItem'
+import { AccountIconRenderer } from '@/components/icons/AccountIcons'
 
 const AccountsPage = () => {
   const { accounts, isLoading, error, fetchAccounts, updateAccount, archiveAccount, deleteAccount } = useAccountsStore()
   const { setFilters } = useTransactionsStore()
   const { privacy } = useSettingsStore()
   const navigate = useNavigate()
+  
+  // Swipeable list state management
+  const { handleSwipeStart, handleSwipeEnd } = useSwipeableList()
   
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const [editingAccount, setEditingAccount] = useState<any>(null)
@@ -146,16 +151,24 @@ const AccountsPage = () => {
           const metadata = account.isDefault ? 'Default' : ''
           
           return (
-            <ListItem
+            <SwipeableListItem
               key={account.id}
-              title={account.name}
-              subtitle={subtitle}
-              metadata={metadata}
-              value={formatCurrency(account.balance)}
-              valueColor={account.balance >= 0 ? 'default' : 'danger'}
-              onClick={() => navigate(`/accounts/${account.id}`)}
-              actions={
-                <div className="relative" ref={dropdownRef}>
+              onDelete={() => handleArchive(account.id, account.name)}
+              onSwipeStart={() => handleSwipeStart(account.id)}
+              onSwipeEnd={handleSwipeEnd}
+              deleteLabel="Archive"
+              deleteConfirmation={false}
+              threshold={80}
+              listItemProps={{
+                icon: <AccountIconRenderer accountType={account.type} size={32} />,
+                title: account.name,
+                subtitle: subtitle,
+                metadata: metadata,
+                value: formatCurrency(account.balance),
+                valueColor: account.balance >= 0 ? 'default' : 'danger',
+                onClick: () => navigate(`/accounts/${account.id}`),
+                actions: (
+                  <div className="relative" ref={dropdownRef}>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation()
@@ -213,8 +226,9 @@ const AccountsPage = () => {
                           </div>
                         </div>
                       )}
-                    </div>
-              }
+                  </div>
+                )
+              }}
             />
           )
         })}
