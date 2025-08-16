@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTransactionsStore, useCategoriesStore, useBudgetsStore, useSettingsStore } from '@/stores'
 import { formatCurrency, formatPercentage } from '@/services'
 import { subDays, startOfMonth, endOfMonth, format, eachDayOfInterval } from 'date-fns'
@@ -17,7 +18,7 @@ import {
 } from 'recharts'
 import SafeResponsive from '@/components/Charts/SafeResponsive'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { TrendingUp, TrendingDown, Minus, Calendar, PieChart as PieChartIcon, BarChart3 } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, Calendar, PieChart as PieChartIcon, BarChart3, ChevronRight } from 'lucide-react'
 
 interface SpendingTrendData {
   date: string
@@ -82,6 +83,7 @@ const PieTooltip = ({ active, payload }: any) => {
 }
 
 const InsightsPage = () => {
+  const navigate = useNavigate()
   const { transactions, isLoading: transactionsLoading, fetchTransactions } = useTransactionsStore()
   const { categories, fetchCategories } = useCategoriesStore()
   const { fetchBudgets } = useBudgetsStore()
@@ -306,6 +308,13 @@ const InsightsPage = () => {
             <option value={90}>Last 3 months</option>
             <option value={180}>Last 6 months</option>
           </select>
+          <button
+            onClick={() => navigate('/trends')}
+            className="flex items-center gap-1 px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Advanced Analytics
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
       

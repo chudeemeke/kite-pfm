@@ -220,9 +220,9 @@ class ErrorHandlerService {
       'Please log in to continue'
     )
     
-    // Clear any stored auth tokens
-    localStorage.removeItem('authToken')
-    sessionStorage.removeItem('authToken')
+    // Note: Authentication in Kite is handled via PIN/biometric through the security service
+    // No auth tokens are used since this is a local-first application
+    // Security state is managed in IndexedDB via the security service
   }
 
   /**

@@ -15,7 +15,8 @@ import type {
   GoalMilestone,
   GoalContribution,
   AnomalyInsight,
-  Backup
+  Backup,
+  Notification
 } from '@/types'
 
 export class KiteDatabase extends Dexie {
@@ -36,6 +37,7 @@ export class KiteDatabase extends Dexie {
   goalContributions!: Table<GoalContribution, string>
   anomalyInsights!: Table<AnomalyInsight, string>
   backups!: Table<Backup, string>
+  notifications!: Table<Notification, string>
 
   constructor() {
     super('KiteDatabase')
@@ -160,6 +162,28 @@ export class KiteDatabase extends Dexie {
       backups: 'id, name, type, createdAt, size, [type+createdAt]'
     })
 
+    // Version 7 - Add notifications table
+    this.version(7).stores({
+      accounts: 'id, name, type, currency, balance, createdAt, archivedAt',
+      transactions: 'id, accountId, date, amount, currency, description, merchant, categoryId, isSubscription, metadata, [accountId+date], [categoryId+date]',
+      categories: 'id, name, icon, color, parentId',
+      budgets: 'id, categoryId, month, amount, carryStrategy, [categoryId+month]',
+      rules: 'id, name, enabled, priority, stopProcessing',
+      subscriptions: 'id, name, cadence, amount, currency, nextDueDate, accountId, categoryId',
+      appMeta: 'id, schemaVersion, appVersion, createdAt, updatedAt',
+      users: 'id, email, name, createdAt, lastActiveAt',
+      securityCredentials: 'id, userId, type, credentialId, encryptedData, deviceName, createdAt, lastUsedAt, [userId+type]',
+      securitySettings: 'id, userId, autoLockMinutes, privacyMode, biometricEnabled, pinEnabled, updatedAt',
+      settings: 'id, value, createdAt, updatedAt',
+      goals: 'id, userId, name, type, category, status, priority, targetDate, createdAt, [userId+status], [userId+targetDate]',
+      goalMilestones: 'id, goalId, targetAmount, achievedAt, [goalId+achievedAt]',
+      goalContributions: 'id, goalId, date, amount, source, [goalId+date]',
+      anomalyInsights: 'id, type, severity, detectedAt, dismissed, [type+detectedAt], [dismissed+detectedAt]',
+      backups: 'id, name, type, createdAt, size, [type+createdAt]',
+      // New notifications table
+      notifications: 'id, userId, type, timestamp, read, severity, [userId+read], [userId+timestamp], [type+timestamp]'
+    })
+
     // Hook for schema upgrades - track migrations in appMeta
     this.on('ready', async () => {
       await this.trackMigration()
@@ -229,6 +253,11 @@ export class KiteDatabase extends Dexie {
         clearPromises.push(this.backups.clear())
       }
       
+      // Clear notifications table if exists
+      if (this.notifications) {
+        clearPromises.push(this.notifications.clear())
+      }
+      
       await Promise.all(clearPromises)
       // Keep appMeta but update timestamp
       const meta = await this.appMeta.get('singleton')
@@ -268,5 +297,6 @@ export const {
   goalMilestones,
   goalContributions,
   anomalyInsights,
-  backups
+  backups,
+  notifications
 } = db

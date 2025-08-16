@@ -417,3 +417,16 @@ export interface BackupData {
   exportDate: Date
   appVersion: string
 }
+
+// Notification types
+export interface Notification {
+  id: string
+  type: 'budget_alert' | 'large_transaction' | 'weekly_summary' | 'monthly_report' | 'reminder' | 'goal_progress' | 'anomaly_detected'
+  title: string
+  message: string
+  timestamp: Date
+  read: boolean
+  severity: 'info' | 'warning' | 'error' | 'success'
+  data?: any
+  userId: string
+}

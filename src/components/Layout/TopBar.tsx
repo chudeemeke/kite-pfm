@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { Moon, Sun, Menu, Download, Upload, Eye, EyeOff, HelpCircle, Info, X, Database, FileText, RefreshCw } from 'lucide-react'
-import { useUIStore, useTransactionsStore, useAccountsStore, useBudgetsStore, useSettingsStore } from '@/stores'
+import { useUIStore, useTransactionsStore, useAccountsStore, useBudgetsStore, useSettingsStore, toast } from '@/stores'
 import { cn } from '@/lib/utils'
 import { useNavigate } from 'react-router-dom'
+import { db } from '@/db/schema'
 import BackupManager from '../BackupManager'
 import DataImport from '../DataImport'
 import ConfirmDialog from '../ConfirmDialog'
@@ -105,12 +106,27 @@ const TopBar = () => {
     URL.revokeObjectURL(url)
   }
   
-  const handleClearCache = () => {
-    // Clear localStorage data
-    localStorage.clear()
-    setShowClearConfirm(false)
-    setShowMenu(false)
-    window.location.reload()
+  const handleClearCache = async () => {
+    try {
+      // Clear all data from IndexedDB using the database instance
+      await db.clearAllData()
+      
+      // Clear zustand stores' persisted data
+      // Note: The stores will be reset when the page reloads
+      
+      toast.success('Cache Cleared', 'All local data has been cleared successfully')
+      
+      setShowClearConfirm(false)
+      setShowMenu(false)
+      
+      // Reload the page to reinitialize the app with fresh state
+      setTimeout(() => {
+        window.location.reload()
+      }, 500)
+    } catch (error) {
+      console.error('Failed to clear cache:', error)
+      toast.error('Clear Failed', 'Failed to clear all data. Please try again.')
+    }
   }
   
   const menuItems = [

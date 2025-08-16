@@ -1,37 +1,39 @@
+/**
+ * Notification Service - Refactored to use IndexedDB
+ * Manages notifications using proper database storage
+ */
+
 import React from 'react'
+import { db } from '@/db/schema'
 import { useSettingsStore } from '@/stores/settings'
 import { useTransactionsStore } from '@/stores/transactions'
 import { useBudgetsStore } from '@/stores/budgets'
 import { formatCurrency } from './format'
-
-export interface NotificationData {
-  id: string
-  type: 'budget_alert' | 'large_transaction' | 'weekly_summary' | 'monthly_report' | 'reminder'
-  title: string
-  message: string
-  timestamp: Date
-  read: boolean
-  severity: 'info' | 'warning' | 'error'
-  data?: any
-}
+import type { Notification } from '@/types'
+import { v4 as uuidv4 } from 'uuid'
 
 class NotificationService {
-  private notifications: NotificationData[] = []
-  private listeners: Array<(notifications: NotificationData[]) => void> = []
-  private checkInterval: number | null = null
+  private listeners: Array<(notifications: Notification[]) => void> = []
+  private checkInterval: ReturnType<typeof setInterval> | null = null
+  private userId = 'default-user'
+  private initialized = false
 
   constructor() {
-    this.loadNotifications()
+    // Constructor should be lightweight
+    // Initialization happens in init()
   }
 
-  init() {
+  async init() {
+    if (this.initialized) return
+    
     // Start checking for notifications every minute
     this.checkInterval = setInterval(() => {
       this.checkNotifications()
     }, 60000) // 1 minute
 
     // Initial check
-    this.checkNotifications()
+    await this.checkNotifications()
+    this.initialized = true
   }
 
   cleanup() {
@@ -39,374 +41,459 @@ class NotificationService {
       clearInterval(this.checkInterval)
       this.checkInterval = null
     }
+    this.initialized = false
   }
 
-  private loadNotifications() {
+  private async loadNotifications(): Promise<Notification[]> {
     try {
-      const stored = localStorage.getItem('kite-notifications')
-      if (stored) {
-        this.notifications = JSON.parse(stored).map((n: any) => ({
-          ...n,
-          timestamp: new Date(n.timestamp)
-        }))
-      }
+      // Load notifications from database for current user
+      const userNotifications = await db.notifications
+        .where('userId')
+        .equals(this.userId)
+        .reverse()
+        .sortBy('timestamp')
+      
+      // Return only the last 50 notifications
+      return userNotifications.slice(0, 50)
     } catch (error) {
       console.error('Failed to load notifications:', error)
+      return []
     }
   }
 
-  private saveNotifications() {
+  private async saveNotification(notification: Notification): Promise<void> {
     try {
-      localStorage.setItem('kite-notifications', JSON.stringify(this.notifications))
+      await db.notifications.add(notification)
+      
+      // Clean up old notifications (keep only last 100)
+      const allNotifications = await db.notifications
+        .where('userId')
+        .equals(this.userId)
+        .reverse()
+        .sortBy('timestamp')
+      
+      if (allNotifications.length > 100) {
+        const toDelete = allNotifications.slice(100)
+        const deleteIds = toDelete.map(n => n.id)
+        await db.notifications.bulkDelete(deleteIds)
+      }
     } catch (error) {
-      console.error('Failed to save notifications:', error)
+      console.error('Failed to save notification:', error)
     }
   }
 
-  private notifyListeners() {
-    this.listeners.forEach(listener => listener([...this.notifications]))
+  private async notifyListeners() {
+    const notifications = await this.loadNotifications()
+    this.listeners.forEach(listener => listener(notifications))
   }
 
-  subscribe(listener: (notifications: NotificationData[]) => void) {
+  subscribe(listener: (notifications: Notification[]) => void) {
     this.listeners.push(listener)
+    
     // Immediately call with current notifications
-    listener([...this.notifications])
+    this.loadNotifications().then(notifications => {
+      listener(notifications)
+    })
     
     return () => {
       this.listeners = this.listeners.filter(l => l !== listener)
     }
   }
 
-  private addNotification(notification: Omit<NotificationData, 'id' | 'timestamp' | 'read'>) {
-    const newNotification: NotificationData = {
+  async addNotification(notification: Omit<Notification, 'id' | 'timestamp' | 'read' | 'userId'>) {
+    const newNotification: Notification = {
       ...notification,
-      id: Math.random().toString(36).substr(2, 9),
+      id: uuidv4(),
       timestamp: new Date(),
-      read: false
+      read: false,
+      userId: this.userId
     }
 
-    this.notifications.unshift(newNotification)
-    
-    // Keep only last 50 notifications
-    if (this.notifications.length > 50) {
-      this.notifications = this.notifications.slice(0, 50)
-    }
-
-    this.saveNotifications()
-    this.notifyListeners()
+    await this.saveNotification(newNotification)
+    await this.notifyListeners()
 
     // Show toast notification if settings allow
     const settings = useSettingsStore.getState()
     if (settings.notifications.soundEffects) {
-      this.playNotificationSound()
+      // Play notification sound if available
+      try {
+        const audio = new Audio('/sounds/notification.mp3')
+        audio.volume = 0.3
+        audio.play().catch(() => {})
+      } catch {}
     }
 
-    // Show browser notification if permission granted
-    this.showBrowserNotification(newNotification)
+    return newNotification
+  }
+
+  async markAsRead(notificationId: string) {
+    try {
+      await db.notifications.update(notificationId, { read: true })
+      await this.notifyListeners()
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error)
+    }
+  }
+
+  async markAllAsRead() {
+    try {
+      const notifications = await db.notifications
+        .where('userId')
+        .equals(this.userId)
+        .and(n => !n.read)
+        .toArray()
+      
+      const updatePromises = notifications.map(n => 
+        db.notifications.update(n.id, { read: true })
+      )
+      
+      await Promise.all(updatePromises)
+      await this.notifyListeners()
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error)
+    }
+  }
+
+  async deleteNotification(notificationId: string) {
+    try {
+      await db.notifications.delete(notificationId)
+      await this.notifyListeners()
+    } catch (error) {
+      console.error('Failed to delete notification:', error)
+    }
+  }
+
+  async clearAllNotifications() {
+    try {
+      const userNotifications = await db.notifications
+        .where('userId')
+        .equals(this.userId)
+        .toArray()
+      
+      const deleteIds = userNotifications.map(n => n.id)
+      await db.notifications.bulkDelete(deleteIds)
+      await this.notifyListeners()
+    } catch (error) {
+      console.error('Failed to clear notifications:', error)
+    }
+  }
+
+  async getUnreadCount(): Promise<number> {
+    try {
+      const count = await db.notifications
+        .where('userId')
+        .equals(this.userId)
+        .and(n => !n.read)
+        .count()
+      
+      return count
+    } catch (error) {
+      console.error('Failed to get unread count:', error)
+      return 0
+    }
   }
 
   private async checkNotifications() {
     const settings = useSettingsStore.getState()
     
+    if (!settings.notifications.emailAlerts && !settings.notifications.pushNotifications) {
+      return // Notifications are disabled
+    }
+
+    // Check for budget alerts
     if (settings.notifications.budgetAlerts) {
       await this.checkBudgetAlerts()
     }
-    
-    if (settings.notifications.largeTransactionAlerts) {
-      await this.checkLargeTransactions()
+
+    // Check for large transactions
+    await this.checkLargeTransactions()
+
+    // Check for weekly summary (on Sundays)
+    const now = new Date()
+    if (now.getDay() === 0 && now.getHours() === 9 && now.getMinutes() < 1) {
+      await this.generateWeeklySummary()
     }
-    
-    if (settings.notifications.weeklySummary) {
-      this.checkWeeklySummary()
+
+    // Check for monthly report (on 1st of month)
+    if (now.getDate() === 1 && now.getHours() === 9 && now.getMinutes() < 1) {
+      await this.generateMonthlyReport()
     }
-    
-    if (settings.notifications.monthlyReport) {
-      this.checkMonthlyReport()
-    }
+
+    // Check for goal progress
+    await this.checkGoalProgress()
+
+    // Check for anomalies
+    await this.checkAnomalies()
   }
 
   private async checkBudgetAlerts() {
-    try {
-      const settings = useSettingsStore.getState()
-      const { budgets } = useBudgetsStore.getState()
-      const { transactions } = useTransactionsStore.getState()
-      
-      const currentMonth = new Date().toISOString().slice(0, 7) // YYYY-MM
-      const currentMonthBudgets = budgets.filter(b => b.month === currentMonth)
-      
-      for (const budget of currentMonthBudgets) {
-        // Calculate spent amount for this budget
-        const spent = transactions
-          .filter(t => 
-            t.categoryId === budget.categoryId && 
-            t.date.toISOString().slice(0, 7) === currentMonth &&
-            t.amount < 0 // Only expenses
-          )
-          .reduce((sum, t) => sum + Math.abs(t.amount), 0)
-        
-        const percentage = (spent / budget.amount) * 100
-        
-        if (percentage >= settings.notifications.budgetThreshold) {
-          // Check if we've already sent this notification recently
-          const recentAlert = this.notifications.find(n => 
-            n.type === 'budget_alert' &&
+    const budgets = useBudgetsStore.getState().budgets
+    const transactions = useTransactionsStore.getState().transactions
+    const currentMonth = new Date().toISOString().slice(0, 7)
+
+    for (const budget of budgets) {
+      const monthTransactions = transactions.filter(t => 
+        t.categoryId === budget.categoryId &&
+        t.date.toISOString().slice(0, 7) === currentMonth
+      )
+
+      const spent = monthTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0)
+      const percentage = (spent / budget.amount) * 100
+
+      if (percentage >= 90 && percentage < 100) {
+        // Check if we already sent this alert today
+        const existingAlert = await db.notifications
+          .where('type')
+          .equals('budget_alert')
+          .and(n => 
+            n.userId === this.userId &&
             n.data?.budgetId === budget.id &&
-            n.timestamp > new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+            n.timestamp > new Date(Date.now() - 24 * 60 * 60 * 1000)
           )
-          
-          if (!recentAlert) {
-            this.addNotification({
-              type: 'budget_alert',
-              title: 'Budget Alert',
-              message: `You've spent ${percentage.toFixed(0)}% of your budget for this category`,
-              severity: percentage >= 100 ? 'error' : 'warning',
-              data: { budgetId: budget.id, spent, budgeted: budget.amount, percentage }
-            })
-          }
+          .first()
+
+        if (!existingAlert) {
+          await this.addNotification({
+            type: 'budget_alert',
+            title: 'Budget Alert',
+            message: `You've used ${percentage.toFixed(0)}% of your budget for ${budget.categoryId}`,
+            severity: 'warning',
+            data: { budgetId: budget.id, percentage, spent, budget: budget.amount }
+          })
+        }
+      } else if (percentage >= 100) {
+        // Over budget alert
+        const existingAlert = await db.notifications
+          .where('type')
+          .equals('budget_alert')
+          .and(n => 
+            n.userId === this.userId &&
+            n.data?.budgetId === budget.id &&
+            n.data?.overBudget === true &&
+            n.timestamp > new Date(Date.now() - 24 * 60 * 60 * 1000)
+          )
+          .first()
+
+        if (!existingAlert) {
+          await this.addNotification({
+            type: 'budget_alert',
+            title: 'Over Budget!',
+            message: `You've exceeded your budget for ${budget.categoryId} by ${formatCurrency(spent - budget.amount)}`,
+            severity: 'error',
+            data: { budgetId: budget.id, percentage, spent, budget: budget.amount, overBudget: true }
+          })
         }
       }
-    } catch (error) {
-      console.error('Failed to check budget alerts:', error)
     }
   }
 
   private async checkLargeTransactions() {
-    try {
-      const settings = useSettingsStore.getState()
-      const { transactions } = useTransactionsStore.getState()
-      
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      const recentTransactions = transactions.filter(t => t.date > oneDayAgo)
-      
-      for (const transaction of recentTransactions) {
-        const amount = Math.abs(transaction.amount)
-        
-        if (amount >= settings.notifications.largeTransactionThreshold) {
-          // Check if we've already notified about this transaction
-          const existingAlert = this.notifications.find(n => 
-            n.type === 'large_transaction' &&
-            n.data?.transactionId === transaction.id
-          )
-          
-          if (!existingAlert) {
-            this.addNotification({
-              type: 'large_transaction',
-              title: 'Large Transaction Alert',
-              message: `${transaction.amount > 0 ? 'Received' : 'Spent'} ${formatCurrency(amount)} - ${transaction.description}`,
-              severity: 'info',
-              data: { transactionId: transaction.id, amount: transaction.amount }
-            })
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check large transactions:', error)
-    }
-  }
+    const transactions = useTransactionsStore.getState().transactions
+    const settings = useSettingsStore.getState()
+    const threshold = 500 // $500 threshold for large transactions
 
-  private checkWeeklySummary() {
-    try {
-      const now = new Date()
-      const dayOfWeek = now.getDay() // 0 = Sunday, 1 = Monday, etc.
-      const hour = now.getHours()
-      
-      // Send weekly summary on Sunday at 9 AM
-      if (dayOfWeek === 0 && hour === 9) {
-        const lastWeeklySummary = this.notifications.find(n => 
-          n.type === 'weekly_summary' &&
-          n.timestamp > new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) // Last 6 days
+    // Check transactions from the last hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    
+    const largeTransactions = transactions.filter(t => 
+      Math.abs(t.amount) >= threshold &&
+      t.date > oneHourAgo
+    )
+
+    for (const transaction of largeTransactions) {
+      // Check if we already notified about this transaction
+      const existingNotification = await db.notifications
+        .where('type')
+        .equals('large_transaction')
+        .and(n => 
+          n.userId === this.userId &&
+          n.data?.transactionId === transaction.id
         )
-        
-        if (!lastWeeklySummary) {
-          this.generateWeeklySummary()
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check weekly summary:', error)
-    }
-  }
+        .first()
 
-  private checkMonthlyReport() {
-    try {
-      const now = new Date()
-      const dayOfMonth = now.getDate()
-      const hour = now.getHours()
-      
-      // Send monthly report on the 1st of each month at 9 AM
-      if (dayOfMonth === 1 && hour === 9) {
-        const lastMonthlyReport = this.notifications.find(n => 
-          n.type === 'monthly_report' &&
-          n.timestamp > new Date(Date.now() - 25 * 24 * 60 * 60 * 1000) // Last 25 days
-        )
-        
-        if (!lastMonthlyReport) {
-          this.generateMonthlyReport()
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check monthly report:', error)
-    }
-  }
-
-  private generateWeeklySummary() {
-    try {
-      const { transactions } = useTransactionsStore.getState()
-      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      const weekTransactions = transactions.filter(t => t.date > oneWeekAgo)
-      
-      const income = weekTransactions
-        .filter(t => t.amount > 0)
-        .reduce((sum, t) => sum + t.amount, 0)
-      
-      const expenses = Math.abs(weekTransactions
-        .filter(t => t.amount < 0)
-        .reduce((sum, t) => sum + t.amount, 0))
-      
-      const netChange = income - expenses
-      
-      this.addNotification({
-        type: 'weekly_summary',
-        title: 'Weekly Summary',
-        message: `This week: ${formatCurrency(income)} income, ${formatCurrency(expenses)} expenses. Net: ${formatCurrency(netChange)}`,
-        severity: 'info',
-        data: { income, expenses, netChange, transactionCount: weekTransactions.length }
-      })
-    } catch (error) {
-      console.error('Failed to generate weekly summary:', error)
-    }
-  }
-
-  private generateMonthlyReport() {
-    try {
-      const { transactions } = useTransactionsStore.getState()
-      const lastMonth = new Date()
-      lastMonth.setMonth(lastMonth.getMonth() - 1)
-      const monthStart = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1)
-      const monthEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 0)
-      
-      const monthTransactions = transactions.filter(t => 
-        t.date >= monthStart && t.date <= monthEnd
-      )
-      
-      const income = monthTransactions
-        .filter(t => t.amount > 0)
-        .reduce((sum, t) => sum + t.amount, 0)
-      
-      const expenses = Math.abs(monthTransactions
-        .filter(t => t.amount < 0)
-        .reduce((sum, t) => sum + t.amount, 0))
-      
-      const monthName = lastMonth.toLocaleString('default', { month: 'long' })
-      
-      this.addNotification({
-        type: 'monthly_report',
-        title: 'Monthly Report',
-        message: `${monthName}: ${formatCurrency(income)} income, ${formatCurrency(expenses)} expenses`,
-        severity: 'info',
-        data: { income, expenses, month: monthName, transactionCount: monthTransactions.length }
-      })
-    } catch (error) {
-      console.error('Failed to generate monthly report:', error)
-    }
-  }
-
-  private playNotificationSound() {
-    try {
-      // Create a simple notification sound using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-      
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
-      gainNode.gain.setValueAtTime(0.1, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
-      
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + 0.3)
-    } catch (error) {
-      console.warn('Failed to play notification sound:', error)
-    }
-  }
-
-  private async showBrowserNotification(notification: NotificationData) {
-    try {
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(notification.title, {
-          body: notification.message,
-          icon: '/kite-icon-192.png',
-          badge: '/kite-icon-192.png',
-          tag: `kite-${notification.type}`,
-          requireInteraction: notification.severity === 'error'
+      if (!existingNotification) {
+        await this.addNotification({
+          type: 'large_transaction',
+          title: 'Large Transaction Detected',
+          message: `${transaction.description} for ${formatCurrency(Math.abs(transaction.amount))}`,
+          severity: 'info',
+          data: { transactionId: transaction.id, amount: transaction.amount }
         })
       }
-    } catch (error) {
-      console.warn('Failed to show browser notification:', error)
     }
   }
 
-  async requestNotificationPermission(): Promise<boolean> {
-    if (!('Notification' in window)) {
-      return false
-    }
+  private async generateWeeklySummary() {
+    const transactions = useTransactionsStore.getState().transactions
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     
-    if (Notification.permission === 'granted') {
-      return true
-    }
+    const weekTransactions = transactions.filter(t => t.date > oneWeekAgo)
+    const totalSpent = weekTransactions
+      .filter(t => t.amount < 0)
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
     
-    if (Notification.permission === 'denied') {
-      return false
-    }
-    
-    const permission = await Notification.requestPermission()
-    return permission === 'granted'
-  }
+    const totalIncome = weekTransactions
+      .filter(t => t.amount > 0)
+      .reduce((sum, t) => sum + t.amount, 0)
 
-  markAsRead(notificationId: string) {
-    const notification = this.notifications.find(n => n.id === notificationId)
-    if (notification) {
-      notification.read = true
-      this.saveNotifications()
-      this.notifyListeners()
-    }
-  }
-
-  markAllAsRead() {
-    this.notifications.forEach(n => n.read = true)
-    this.saveNotifications()
-    this.notifyListeners()
-  }
-
-  deleteNotification(notificationId: string) {
-    this.notifications = this.notifications.filter(n => n.id !== notificationId)
-    this.saveNotifications()
-    this.notifyListeners()
-  }
-
-  clearAllNotifications() {
-    this.notifications = []
-    this.saveNotifications()
-    this.notifyListeners()
-  }
-
-  getNotifications(): NotificationData[] {
-    return [...this.notifications]
-  }
-
-  getUnreadCount(): number {
-    return this.notifications.filter(n => !n.read).length
-  }
-
-  // Manual notification triggers for testing
-  triggerTestNotification() {
-    this.addNotification({
-      type: 'reminder',
-      title: 'Test Notification',
-      message: 'This is a test notification from Kite',
-      severity: 'info'
+    await this.addNotification({
+      type: 'weekly_summary',
+      title: 'Weekly Summary',
+      message: `Spent: ${formatCurrency(totalSpent)}, Income: ${formatCurrency(totalIncome)}`,
+      severity: 'info',
+      data: { totalSpent, totalIncome, transactionCount: weekTransactions.length }
     })
+  }
+
+  private async generateMonthlyReport() {
+    const transactions = useTransactionsStore.getState().transactions
+    const lastMonth = new Date()
+    lastMonth.setMonth(lastMonth.getMonth() - 1)
+    const lastMonthString = lastMonth.toISOString().slice(0, 7)
+    
+    const monthTransactions = transactions.filter(t => 
+      t.date.toISOString().slice(0, 7) === lastMonthString
+    )
+    
+    const totalSpent = monthTransactions
+      .filter(t => t.amount < 0)
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    
+    const totalIncome = monthTransactions
+      .filter(t => t.amount > 0)
+      .reduce((sum, t) => sum + t.amount, 0)
+
+    const netSavings = totalIncome - totalSpent
+
+    await this.addNotification({
+      type: 'monthly_report',
+      title: `${lastMonth.toLocaleDateString('en-US', { month: 'long' })} Report`,
+      message: `Net ${netSavings >= 0 ? 'Savings' : 'Loss'}: ${formatCurrency(Math.abs(netSavings))}`,
+      severity: netSavings >= 0 ? 'success' : 'warning',
+      data: { 
+        month: lastMonthString, 
+        totalSpent, 
+        totalIncome, 
+        netSavings,
+        transactionCount: monthTransactions.length 
+      }
+    })
+  }
+
+  private async checkGoalProgress() {
+    try {
+      const goals = await db.goals
+        .where('userId')
+        .equals(this.userId)
+        .and(goal => goal.status === 'active')
+        .toArray()
+
+      for (const goal of goals) {
+        const contributions = await db.goalContributions
+          .where('goalId')
+          .equals(goal.id)
+          .toArray()
+
+        const currentAmount = contributions.reduce((sum, c) => sum + c.amount, 0)
+        const percentage = (currentAmount / goal.targetAmount) * 100
+
+        // Check milestones
+        if (percentage >= 25 && percentage < 30) {
+          await this.checkAndNotifyMilestone(goal, 25, currentAmount)
+        } else if (percentage >= 50 && percentage < 55) {
+          await this.checkAndNotifyMilestone(goal, 50, currentAmount)
+        } else if (percentage >= 75 && percentage < 80) {
+          await this.checkAndNotifyMilestone(goal, 75, currentAmount)
+        } else if (percentage >= 100) {
+          await this.checkAndNotifyGoalComplete(goal, currentAmount)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check goal progress:', error)
+    }
+  }
+
+  private async checkAndNotifyMilestone(goal: any, milestone: number, currentAmount: number) {
+    // Check if we already notified about this milestone
+    const existingNotification = await db.notifications
+      .where('type')
+      .equals('goal_progress')
+      .and(n => 
+        n.userId === this.userId &&
+        n.data?.goalId === goal.id &&
+        n.data?.milestone === milestone
+      )
+      .first()
+
+    if (!existingNotification) {
+      await this.addNotification({
+        type: 'goal_progress',
+        title: `${milestone}% Goal Milestone!`,
+        message: `You've reached ${milestone}% of your "${goal.name}" goal`,
+        severity: 'success',
+        data: { goalId: goal.id, milestone, currentAmount, targetAmount: goal.targetAmount }
+      })
+    }
+  }
+
+  private async checkAndNotifyGoalComplete(goal: any, currentAmount: number) {
+    // Check if we already notified about completion
+    const existingNotification = await db.notifications
+      .where('type')
+      .equals('goal_progress')
+      .and(n => 
+        n.userId === this.userId &&
+        n.data?.goalId === goal.id &&
+        n.data?.complete === true
+      )
+      .first()
+
+    if (!existingNotification) {
+      await this.addNotification({
+        type: 'goal_progress',
+        title: 'Goal Achieved! 🎉',
+        message: `Congratulations! You've completed your "${goal.name}" goal`,
+        severity: 'success',
+        data: { goalId: goal.id, complete: true, currentAmount, targetAmount: goal.targetAmount }
+      })
+    }
+  }
+
+  private async checkAnomalies() {
+    try {
+      // Check for recent anomalies that haven't been notified
+      const recentAnomalies = await db.anomalyInsights
+        .where('dismissed')
+        .equals(false)
+        .and(anomaly => 
+          anomaly.detectedAt > new Date(Date.now() - 60 * 60 * 1000) // Last hour
+        )
+        .toArray()
+
+      for (const anomaly of recentAnomalies) {
+        // Check if we already notified about this anomaly
+        const existingNotification = await db.notifications
+          .where('type')
+          .equals('anomaly_detected')
+          .and(n => 
+            n.userId === this.userId &&
+            n.data?.anomalyId === anomaly.id
+          )
+          .first()
+
+        if (!existingNotification) {
+          await this.addNotification({
+            type: 'anomaly_detected',
+            title: 'Unusual Activity Detected',
+            message: anomaly.description,
+            severity: anomaly.severity as 'info' | 'warning' | 'error',
+            data: { anomalyId: anomaly.id, type: anomaly.type }
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check anomalies:', error)
+    }
   }
 }
 
@@ -414,22 +501,49 @@ class NotificationService {
 export const notificationService = new NotificationService()
 
 // React hook for using notifications
-export const useNotifications = () => {
-  const [notifications, setNotifications] = React.useState<NotificationData[]>([])
-  
+export function useNotifications() {
+  const [notifications, setNotifications] = React.useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = React.useState(0)
+
   React.useEffect(() => {
     const unsubscribe = notificationService.subscribe(setNotifications)
+    
+    // Update unread count
+    notificationService.getUnreadCount().then(setUnreadCount)
+    
     return unsubscribe
   }, [])
-  
+
+  React.useEffect(() => {
+    const count = notifications.filter(n => !n.read).length
+    setUnreadCount(count)
+  }, [notifications])
+
   return {
     notifications,
-    unreadCount: notificationService.getUnreadCount(),
-    markAsRead: notificationService.markAsRead.bind(notificationService),
-    markAllAsRead: notificationService.markAllAsRead.bind(notificationService),
-    deleteNotification: notificationService.deleteNotification.bind(notificationService),
-    clearAllNotifications: notificationService.clearAllNotifications.bind(notificationService),
-    requestPermission: notificationService.requestNotificationPermission.bind(notificationService),
-    triggerTest: notificationService.triggerTestNotification.bind(notificationService)
+    unreadCount,
+    markAsRead: (id: string) => notificationService.markAsRead(id),
+    markAllAsRead: () => notificationService.markAllAsRead(),
+    deleteNotification: (id: string) => notificationService.deleteNotification(id),
+    clearAll: () => notificationService.clearAllNotifications()
   }
 }
+
+// Export convenience functions
+export const addNotification = (notification: Omit<Notification, 'id' | 'timestamp' | 'read' | 'userId'>) =>
+  notificationService.addNotification(notification)
+
+export const markNotificationAsRead = (id: string) =>
+  notificationService.markAsRead(id)
+
+export const markAllNotificationsAsRead = () =>
+  notificationService.markAllAsRead()
+
+export const deleteNotification = (id: string) =>
+  notificationService.deleteNotification(id)
+
+export const clearAllNotifications = () =>
+  notificationService.clearAllNotifications()
+
+export const getUnreadNotificationCount = () =>
+  notificationService.getUnreadCount()
