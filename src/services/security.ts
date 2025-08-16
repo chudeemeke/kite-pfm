@@ -74,16 +74,17 @@ class SecurityService {
         this.state.lastActivity = new Date(lastActivitySetting.value)
       }
       
-      // Load lock state from database
-      const lockStateSetting = await db.settings.get('app-lock-state')
-      if (lockStateSetting && lockStateSetting.value) {
-        const lockState = JSON.parse(lockStateSetting.value)
-        this.state.isLocked = lockState.isLocked || false
-      }
-      
       // Check if PIN exists
       const pinCredential = await db.securityCredentials.get(`pin-${this.userId}`)
       this.state.pinEnabled = !!pinCredential
+      
+      // Load lock state from database - but only if security is enabled
+      const lockStateSetting = await db.settings.get('app-lock-state')
+      if (lockStateSetting && lockStateSetting.value) {
+        const lockState = JSON.parse(lockStateSetting.value)
+        // Only restore lock state if security is actually enabled
+        this.state.isLocked = (lockState.isLocked && (this.state.pinEnabled || this.state.biometricEnabled)) || false
+      }
       
     } catch (error) {
       console.error('Failed to load security state:', error)
@@ -157,7 +158,8 @@ class SecurityService {
       clearTimeout(this.activityTimeout)
     }
 
-    if (this.state.sessionTimeout > 0) {
+    // Only set activity timer if security is enabled
+    if (this.state.sessionTimeout > 0 && (this.state.pinEnabled || this.state.biometricEnabled)) {
       this.activityTimeout = setTimeout(() => {
         this.lockApp()
       }, this.state.sessionTimeout)
@@ -165,6 +167,12 @@ class SecurityService {
   }
 
   lockApp() {
+    // Only lock if security is actually enabled
+    if (!this.state.pinEnabled && !this.state.biometricEnabled) {
+      // No security enabled, don't lock the app
+      return
+    }
+    
     this.state.isLocked = true
     this.saveSecurityState()
     this.notifyListeners()

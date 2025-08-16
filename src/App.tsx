@@ -32,7 +32,7 @@ function App() {
   const { initializeStores } = useInitializeStores()
   const tourProgress = useUIStore(state => state.tourProgress)
   const { privacy } = useSettingsStore()
-  const { isLocked, unlockApp } = useSecurity()
+  const { isLocked, unlockApp, isPinEnabled, isBiometricEnabled } = useSecurity()
   
   // Check if database is initialized
   const appMeta = useLiveQuery(() => db.appMeta.get('singleton'))
@@ -115,8 +115,10 @@ function App() {
     )
   }
   
-  // Show lock screen if app is locked
-  if (isLocked) {
+  // Show lock screen only if security is enabled AND app is locked
+  // This prevents lock screen from appearing on first launch before PIN is set
+  const securityEnabled = isPinEnabled() || isBiometricEnabled()
+  if (isLocked && securityEnabled) {
     return (
       <ErrorBoundary>
         <LockScreen onUnlock={() => unlockApp()} />

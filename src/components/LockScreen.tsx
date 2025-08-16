@@ -215,7 +215,7 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
             ? 'Checking security status...'
             : hasPinSetup 
               ? 'Authenticate to access your finances'
-              : 'Create a 6-digit PIN to secure your app'}
+              : 'Welcome! Create a 6-digit PIN to secure your app'}
         </p>
         
         {/* Authentication Method */}
