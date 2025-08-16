@@ -315,6 +315,13 @@ const InsightsPage = () => {
             Advanced Analytics
             <ChevronRight className="w-4 h-4" />
           </button>
+          <button
+            onClick={() => navigate('/reports')}
+            className="flex items-center gap-1 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Financial Reports
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
       

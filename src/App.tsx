@@ -24,6 +24,7 @@ import AccountsPage from './pages/Accounts'
 import AccountDetail from './pages/AccountDetail'
 import InsightsPage from './pages/Insights'
 import SpendingTrendsPage from './pages/SpendingTrends'
+import FinancialReportsPage from './pages/FinancialReports'
 import SettingsPage from './pages/Settings'
 
 // Onboarding
@@ -142,6 +143,7 @@ function App() {
             <Route path="/accounts/:id" element={<AccountDetail />} />
             <Route path="/insights" element={<InsightsPage />} />
             <Route path="/trends" element={<SpendingTrendsPage />} />
+            <Route path="/reports" element={<FinancialReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             
             {/* Redirect any unknown routes to home */}

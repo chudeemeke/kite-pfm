@@ -8,14 +8,16 @@ import { useState, useEffect } from 'react'
 import { 
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   AreaChart, Area, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  ComposedChart, Scatter
 } from 'recharts'
 import { 
   Calendar, TrendingUp, TrendingDown, DollarSign, ShoppingCart, 
   AlertTriangle, ChevronRight, Download, Filter, Info,
-  ArrowUp, ArrowDown, Minus, Clock, Target, Activity
+  ArrowUp, ArrowDown, Minus, Clock, Target, Activity,
+  Settings, Maximize2, Share2, FileText, Bell, Eye
 } from 'lucide-react'
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns'
+import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { formatCurrency } from '@/services/format'
 import { 
@@ -58,16 +60,46 @@ export default function SpendingTrends() {
   const [forecast, setForecast] = useState<SpendingForecast | null>(null)
   const [anomalies, setAnomalies] = useState<AnomalyDetection | null>(null)
 
-  // State for filters
+  // State for filters and advanced controls
   const [timeRange, setTimeRange] = useState<TimeRange>('month')
   const [granularity, setGranularity] = useState<Granularity>('daily')
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
   const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'merchants' | 'patterns' | 'forecast' | 'anomalies'>('overview')
+  
+  // Advanced UI state
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [selectedMerchants, setSelectedMerchants] = useState<string[]>([])
+  const [chartType, setChartType] = useState<'area' | 'line' | 'bar' | 'composed'>('area')
+  const [showDataTable, setShowDataTable] = useState(false)
+  const [exportFormat, setExportFormat] = useState<'json' | 'csv' | 'pdf'>('json')
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState(60000) // 1 minute
+  const [showNotifications, setShowNotifications] = useState(true)
+  const [viewMode, setViewMode] = useState<'compact' | 'detailed' | 'fullscreen'>('detailed')
 
   // Load data on mount and when filters change
   useEffect(() => {
     loadData()
-  }, [timeRange, granularity, comparisonPeriod])
+  }, [timeRange, granularity, comparisonPeriod, selectedCategories, selectedMerchants])
+
+  // Auto-refresh functionality
+  useEffect(() => {
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        loadData()
+      }, refreshInterval)
+      return () => clearInterval(interval)
+    }
+  }, [autoRefresh, refreshInterval])
+
+  // Check for anomalies and show notifications
+  useEffect(() => {
+    if (showNotifications && anomalies && anomalies.alerts.length > 0) {
+      // In production, this would trigger actual notifications
+      console.log('Anomalies detected:', anomalies.alerts)
+    }
+  }, [anomalies, showNotifications])
 
   const loadData = async () => {
     setLoading(true)
@@ -108,6 +140,15 @@ export default function SpendingTrends() {
   const exportData = () => {
     const data = {
       exportDate: new Date().toISOString(),
+      metadata: {
+        timeRange,
+        granularity,
+        comparisonPeriod,
+        filters: {
+          categories: selectedCategories,
+          merchants: selectedMerchants
+        }
+      },
       trendData,
       categoryTrends,
       merchantAnalysis,
@@ -117,13 +158,47 @@ export default function SpendingTrends() {
       anomalies
     }
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `spending-trends-${format(new Date(), 'yyyy-MM-dd')}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    if (exportFormat === 'json') {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `spending-trends-${format(new Date(), 'yyyy-MM-dd')}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else if (exportFormat === 'csv') {
+      // Convert to CSV format
+      let csv = 'Date,Amount,Category,Merchant,Count\n'
+      trendData.forEach(point => {
+        Object.entries(point.categories).forEach(([categoryId, amount]) => {
+          const category = categoryTrends.find(c => c.categoryId === categoryId)
+          csv += `${format(point.date, 'yyyy-MM-dd')},${amount},${category?.categoryName || categoryId},,${point.count}\n`
+        })
+      })
+      
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `spending-trends-${format(new Date(), 'yyyy-MM-dd')}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else if (exportFormat === 'pdf') {
+      // In production, this would use a PDF library
+      alert('PDF export would be implemented with a library like jsPDF')
+    }
+  }
+
+  const handleFullscreen = () => {
+    if (viewMode === 'fullscreen') {
+      setViewMode('detailed')
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+      }
+    } else {
+      setViewMode('fullscreen')
+      document.documentElement.requestFullscreen()
+    }
   }
 
   if (loading) {
@@ -162,42 +237,284 @@ export default function SpendingTrends() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
-      {/* Header */}
+      {/* Enhanced Professional Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                Spending Trends
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Analyze your spending patterns and get insights
-              </p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  Spending Trends Analytics
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Advanced insights and predictive analysis • Last updated: {format(new Date(), 'MMM dd, HH:mm')}
+                </p>
+              </div>
+              {autoRefresh && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-green-100 dark:bg-green-900/20 rounded-full">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-xs text-green-700 dark:text-green-400">Live</span>
+                </div>
+              )}
+              {anomalies && anomalies.alerts.length > 0 && showNotifications && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-orange-100 dark:bg-orange-900/20 rounded-full">
+                  <Bell className="w-3 h-3 text-orange-600" />
+                  <span className="text-xs text-orange-700 dark:text-orange-400">
+                    {anomalies.alerts.length} alerts
+                  </span>
+                </div>
+              )}
             </div>
-            <button
-              onClick={exportData}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-            >
-              <Download className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            </button>
-          </div>
+            
+            {/* Advanced Controls */}
+            <div className="flex items-center gap-2">
+              {/* View Mode Toggle */}
+              <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                {(['compact', 'detailed'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={cn(
+                      'px-3 py-1 text-xs font-medium rounded transition-colors',
+                      viewMode === mode
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-gray-100 shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
+                    )}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </button>
+                ))}
+              </div>
 
-          {/* Time Range Filters */}
-          <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-            {(['week', 'month', 'quarter', 'year'] as TimeRange[]).map(range => (
+              {/* Advanced Filters */}
               <button
-                key={range}
-                onClick={() => setTimeRange(range)}
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className={cn(
-                  'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors',
-                  timeRange === range
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  'p-2 rounded-lg transition-colors',
+                  showAdvancedFilters
+                    ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                 )}
               >
-                {range.charAt(0).toUpperCase() + range.slice(1)}
+                <Filter className="w-5 h-5" />
               </button>
-            ))}
+
+              {/* Auto Refresh */}
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={cn(
+                  'p-2 rounded-lg transition-colors',
+                  autoRefresh
+                    ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                )}
+                title={autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
+              >
+                <Activity className="w-5 h-5" />
+              </button>
+
+              {/* Settings */}
+              <button
+                onClick={() => setShowDataTable(!showDataTable)}
+                className={cn(
+                  'p-2 rounded-lg transition-colors',
+                  showDataTable
+                    ? 'bg-primary-100 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                )}
+                title="Toggle data table"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+
+              {/* Export Options */}
+              <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as any)}
+                  className="bg-transparent text-xs px-2 py-1 outline-none text-gray-700 dark:text-gray-300"
+                >
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                  <option value="pdf">PDF</option>
+                </select>
+                <button
+                  onClick={exportData}
+                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                >
+                  <Download className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+
+              {/* Share */}
+              <button
+                onClick={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: 'Spending Trends Report',
+                      text: `Check out my spending trends for ${timeRange}`,
+                      url: window.location.href
+                    })
+                  }
+                }}
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                <Share2 className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+
+              {/* Fullscreen */}
+              <button
+                onClick={handleFullscreen}
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                <Maximize2 className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+          </div>
+
+          {/* Advanced Filters Panel */}
+          {showAdvancedFilters && (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Granularity Control */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                    Data Granularity
+                  </label>
+                  <select
+                    value={granularity}
+                    onChange={(e) => setGranularity(e.target.value as Granularity)}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
+                  </select>
+                </div>
+
+                {/* Comparison Period */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                    Compare With
+                  </label>
+                  <select
+                    value={comparisonPeriod}
+                    onChange={(e) => setComparisonPeriod(e.target.value as any)}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="week">Previous Week</option>
+                    <option value="month">Previous Month</option>
+                    <option value="quarter">Previous Quarter</option>
+                    <option value="year">Previous Year</option>
+                  </select>
+                </div>
+
+                {/* Chart Type */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                    Chart Type
+                  </label>
+                  <select
+                    value={chartType}
+                    onChange={(e) => setChartType(e.target.value as any)}
+                    className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="area">Area Chart</option>
+                    <option value="line">Line Chart</option>
+                    <option value="bar">Bar Chart</option>
+                    <option value="composed">Composed Chart</option>
+                  </select>
+                </div>
+
+                {/* Auto-refresh Interval */}
+                {autoRefresh && (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                      Refresh Interval
+                    </label>
+                    <select
+                      value={refreshInterval}
+                      onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value={30000}>30 seconds</option>
+                      <option value={60000}>1 minute</option>
+                      <option value={300000}>5 minutes</option>
+                      <option value={600000}>10 minutes</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Notifications Toggle */}
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Show Anomaly Notifications
+                  </label>
+                  <button
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                      showNotifications ? 'bg-primary-600' : 'bg-gray-200 dark:bg-gray-700'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                        showNotifications ? 'translate-x-6' : 'translate-x-1'
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Time Range Filters with Enhanced UI */}
+          <div className="flex items-center gap-4 mt-4">
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {(['week', 'month', 'quarter', 'year', 'all'] as TimeRange[]).map(range => (
+                <button
+                  key={range}
+                  onClick={() => setTimeRange(range)}
+                  className={cn(
+                    'px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-200',
+                    timeRange === range
+                      ? 'bg-primary-600 text-white shadow-md transform scale-105'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  )}
+                >
+                  {range === 'all' ? 'All Time' : range.charAt(0).toUpperCase() + range.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            {/* Quick Period Selector */}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const lastMonth = subMonths(today, 1)
+                  setTimeRange('custom' as TimeRange)
+                  // Would set custom date range here
+                }}
+                className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Last 30 days
+              </button>
+              <span className="text-gray-400">|</span>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  const thisMonthStart = startOfMonth(today)
+                  setTimeRange('custom' as TimeRange)
+                  // Would set custom date range here
+                }}
+                className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                This month
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}
