@@ -17,6 +17,15 @@ import { differenceInDays, differenceInMonths, addMonths, isAfter, isBefore, sta
 
 export class GoalService {
   /**
+   * Get all active goals
+   */
+  async getActiveGoals(): Promise<Goal[]> {
+    return db.goals
+      .where('status')
+      .equals('active')
+      .toArray()
+  }
+  /**
    * Create a new financial goal
    */
   async createGoal(goalData: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'>): Promise<Goal> {

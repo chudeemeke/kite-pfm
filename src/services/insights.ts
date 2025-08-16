@@ -38,6 +38,15 @@ import {
 } from 'date-fns'
 
 export class InsightsService {
+  async generateInsights(period: 'week' | 'month' | 'quarter' | 'year' = 'month'): Promise<InsightSummary> {
+    // For now, use a placeholder userId
+    const userId = 'default'
+    return this.getInsightSummary(userId, period)
+  }
+  
+  async dismissAnomaly(anomalyId: string): Promise<void> {
+    await db.anomalyInsights.update(anomalyId, { dismissed: true })
+  }
   private readonly ANOMALY_THRESHOLD = 2.5 // Standard deviations for anomaly detection
   private readonly MIN_TRANSACTIONS_FOR_PREDICTION = 30
   private readonly CONFIDENCE_THRESHOLD = 70

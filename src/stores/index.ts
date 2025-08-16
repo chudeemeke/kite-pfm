@@ -7,6 +7,7 @@ export { useBudgetsStore } from './budgets'
 export { useRulesStore } from './rules'
 export { useSubscriptionsStore } from './subscriptions'
 export { useSettingsStore } from './settings'
+export { useGoalsStore } from './goals'
 export type { 
   ProfileSettings, 
   AppearanceSettings, 
