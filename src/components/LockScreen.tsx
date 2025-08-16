@@ -25,6 +25,7 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
   const [authMethod, setAuthMethod] = useState<'biometric' | 'pin'>('biometric')
   const [biometricSupported, setBiometricSupported] = useState(false)
   const [greeting, setGreeting] = useState('')
+  const [hasPinSetup, setHasPinSetup] = useState<boolean | null>(null)
   
   const MAX_ATTEMPTS = 3
   const PIN_LENGTH = 6
@@ -35,6 +36,19 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
       userName: profile?.name || 'there',
       mood: 'professional'
     }))
+    
+    // Check if PIN exists in database
+    const checkPinSetup = async () => {
+      try {
+        const { db } = await import('@/db/schema')
+        const credential = await db.securityCredentials.get('pin-default-user')
+        setHasPinSetup(!!credential)
+      } catch (error) {
+        console.error('Error checking PIN setup:', error)
+        setHasPinSetup(false)
+      }
+    }
+    checkPinSetup()
     
     // Auto-trigger biometric on mount if supported
     if (isBiometricEnabled()) {
@@ -97,23 +111,50 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
     setIsAuthenticating(true)
     
     try {
-      const userId = 'default-user' // Use default user ID for now
+      const userId = 'default-user'
       
-      // Check if PIN exists in storage first
-      const storedPin = localStorage.getItem('kite-pin-default-user')
-      if (!storedPin) {
+      // Import db here to avoid initialization issues
+      const { db } = await import('@/db/schema')
+      const { encryptionService } = await import('@/services/encryption')
+      
+      // Check if PIN credential exists
+      const credential = await db.securityCredentials.get(`pin-${userId}`)
+      
+      if (!credential) {
         // No PIN set - this is first time setup
-        // For demo purposes, set the entered PIN as the new PIN
-        const hashedPin = await pinAuth.hashPIN(pin)
-        localStorage.setItem('kite-pin-default-user', hashedPin)
+        // Create PIN credential in database
+        const hashedPin = await encryptionService.hash(pin + userId)
+        
+        await db.securityCredentials.add({
+          id: `pin-${userId}`,
+          userId: userId,
+          type: 'pin',
+          credentialId: `pin-${userId}`,
+          encryptedData: hashedPin,
+          deviceName: 'Web Browser',
+          createdAt: new Date(),
+          lastUsedAt: new Date()
+        })
+        
+        // Update security settings to enable PIN
+        await db.securitySettings.update(`security-${userId}`, {
+          pinEnabled: true,
+          updatedAt: new Date()
+        })
+        
         toast.success('PIN created', 'Your PIN has been set successfully!')
         setTimeout(onUnlock, 300)
         return
       }
       
-      const result = await pinAuth.verifyPIN(userId, pin)
-      
-      if (result.success) {
+      // Verify PIN against database
+      const hashedInput = await encryptionService.hash(pin + userId)
+      if (hashedInput === credential.encryptedData) {
+        // Update last used
+        await db.securityCredentials.update(credential.id, {
+          lastUsedAt: new Date()
+        })
+        
         toast.success('Authentication successful', 'Welcome back!')
         setTimeout(onUnlock, 300)
       } else {
@@ -170,9 +211,11 @@ export const LockScreen = ({ onUnlock }: LockScreenProps) => {
           {greeting}
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mb-8">
-          {localStorage.getItem('kite-pin-default-user') 
-            ? 'Authenticate to access your finances'
-            : 'Create a 6-digit PIN to secure your app'}
+          {hasPinSetup === null 
+            ? 'Checking security status...'
+            : hasPinSetup 
+              ? 'Authenticate to access your finances'
+              : 'Create a 6-digit PIN to secure your app'}
         </p>
         
         {/* Authentication Method */}
