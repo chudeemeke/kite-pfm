@@ -1,9 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from './db/schema'
 import { useInitializeStores, useUIStore, useSettingsStore } from './stores'
-import { demoService } from './services'
 import { settingsService } from './services/settingsApplication'
 import { notificationService } from './services/notifications'
 import { securityService, useSecurity } from './services/security'
@@ -29,6 +28,9 @@ import SettingsPage from './pages/Settings'
 
 // Onboarding
 import OnboardingFlow from './components/Onboarding/OnboardingFlow'
+
+// Dev tools (lazy loaded)
+const DatabaseStatus = lazy(() => import('./components/DevTools/DatabaseStatus'))
 
 function App() {
   const { initializeStores } = useInitializeStores()
@@ -85,12 +87,28 @@ function App() {
   // Initialize demo data on first run
   useEffect(() => {
     if (isDbInitialized && appMeta && appMeta.migrations.includes('v3-initial-setup')) {
-      // Check if we need to seed demo data
-      db.accounts.count().then(count => {
-        if (count === 0) {
-          demoService.seedDemoData().catch(console.error)
+      // Check if we need to load comprehensive demo data
+      const loadInitialData = async () => {
+        try {
+          const accountCount = await db.accounts.count()
+          const transactionCount = await db.transactions.count()
+          
+          // If no data exists, automatically load the rich demo data
+          if (accountCount === 0 && transactionCount === 0) {
+            console.log('First launch detected - loading comprehensive demo data...')
+            
+            // Dynamically import to avoid circular dependencies
+            const { demoDataGenerator } = await import('./services/demoDataGenerator')
+            await demoDataGenerator.generateComprehensiveDemoData()
+            
+            console.log('Demo data loaded successfully!')
+          }
+        } catch (error) {
+          console.error('Failed to load initial demo data:', error)
         }
-      })
+      }
+      
+      loadInitialData()
     }
   }, [isDbInitialized, appMeta])
   
@@ -129,6 +147,10 @@ function App() {
     )
   }
   
+  const isDevelopment = import.meta.env.DEV
+  const { advanced } = useSettingsStore()
+  const showDevTools = isDevelopment && advanced?.developerMode
+
   return (
     <ErrorBoundary>
       <BrowserRouter basename={import.meta.env.BASE_URL || '/'}>
@@ -151,6 +173,13 @@ function App() {
           </Routes>
         </Layout>
         <ToastContainer />
+        
+        {/* Developer Tools */}
+        {showDevTools && (
+          <Suspense fallback={null}>
+            <DatabaseStatus />
+          </Suspense>
+        )}
       </BrowserRouter>
     </ErrorBoundary>
   )

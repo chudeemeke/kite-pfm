@@ -5,7 +5,8 @@ import {
   useAccountsStore,
   toast 
 } from '@/stores'
-import { demoService } from '@/services'
+import { demoDataGenerator } from '@/services/demoDataGenerator'
+import { db } from '@/db/schema'
 import { 
   User, 
   Palette, 
@@ -188,15 +189,66 @@ const SettingsPage = () => {
     }
     
     try {
-      await demoService.clearAllData()
-      await demoService.seedDemoData()
+      toast.info('Clearing all data...', 'This may take a moment')
+      
+      // Method 1: Use the clearAllData method if available
+      if (db.clearAllData) {
+        await db.clearAllData()
+      } else {
+        // Method 2: Clear all tables manually
+        await db.transaction('rw', db.tables, async () => {
+          // Clear all tables
+          const clearPromises = db.tables.map(table => table.clear())
+          await Promise.all(clearPromises)
+        })
+      }
+      
+      // Reset all settings in stores
       resetAllSettings()
-      toast.success('Data reset successfully', 'Demo data has been restored')
-      window.location.reload()
+      
+      // Clear any cached data
+      if ('caches' in window) {
+        const cacheNames = await caches.keys()
+        await Promise.all(cacheNames.map(name => caches.delete(name)))
+      }
+      
+      // Clear localStorage and sessionStorage
+      localStorage.clear()
+      sessionStorage.clear()
+      
+      toast.success('Data cleared successfully', 'All data has been removed. Reloading...')
+      
+      // Reload the page to reinitialize everything
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (error) {
+      console.error('Failed to reset data:', error)
       toast.error('Failed to reset data', 'Please try again')
     } finally {
       setConfirmReset(false)
+    }
+  }
+
+  const handleLoadDemoData = async () => {
+    try {
+      toast.info('Loading demo data...', 'This may take a few seconds')
+      
+      // Clear existing data first to ensure clean state
+      await demoDataGenerator.clearAllDemoData()
+      
+      // Generate comprehensive demo data
+      await demoDataGenerator.generateComprehensiveDemoData()
+      
+      toast.success('Demo data loaded!', '18 months of rich transaction data with analytics')
+      
+      // Reload to show the new data
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
+    } catch (error) {
+      console.error('Failed to load demo data:', error)
+      toast.error('Failed to load demo data', 'Please try again')
     }
   }
 
@@ -1467,6 +1519,29 @@ const SettingsPage = () => {
         </div>
         
         <div className="p-4 space-y-3">
+          {/* Load Demo Data Button */}
+          <button
+            onClick={handleLoadDemoData}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 transition-all transform hover:scale-[1.02] shadow-md"
+          >
+            <Zap className="w-4 h-4" />
+            Load Rich Demo Data
+          </button>
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+            Load 18 months of comprehensive transaction data to explore all features
+          </p>
+          
+          {/* Divider */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">or</span>
+            </div>
+          </div>
+          
+          {/* Reset Data Button */}
           <button
             onClick={handleResetData}
             className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors ${
@@ -1476,11 +1551,11 @@ const SettingsPage = () => {
             }`}
           >
             <Trash2 className="w-4 h-4" />
-            {confirmReset ? 'Confirm Reset All Data' : 'Reset All Data'}
+            {confirmReset ? 'Confirm Clear All Data' : 'Clear All Data'}
           </button>
           {confirmReset && (
             <p className="text-sm text-red-600 dark:text-red-400 text-center">
-              Click again to confirm. This will delete all your data and restore demo data.
+              Click again to confirm. This will permanently delete all your data.
             </p>
           )}
         </div>
