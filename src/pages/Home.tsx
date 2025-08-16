@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAccountsStore, useTransactionsStore, useSettingsStore } from '@/stores'
 import { formatCurrency } from '@/services'
+import { getGreeting } from '@/services/greeting'
 import { TrendingUp, TrendingDown, DollarSign, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -47,13 +48,23 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 const HomePage = () => {
   const { accounts, getTotalBalance, isLoading: accountsLoading, error: accountsError, fetchAccounts } = useAccountsStore()
   const { isLoading: transactionsLoading, error: transactionsError, fetchTransactions } = useTransactionsStore()
-  const { privacy } = useSettingsStore()
+  const { privacy, profile } = useSettingsStore()
   
   const [netWorth, setNetWorth] = useState(0)
+  const [greeting, setGreeting] = useState('')
   
   useEffect(() => {
     fetchAccounts()
     fetchTransactions()
+    
+    // Set dynamic greeting
+    const userName = profile?.name || 'there'
+    const dynamicGreeting = getGreeting({ 
+      userName: userName === 'User' ? 'there' : userName,
+      includeMotivation: Math.random() > 0.5,
+      formality: 'friendly'
+    })
+    setGreeting(dynamicGreeting)
   }, [])
   
   useEffect(() => {
@@ -110,7 +121,7 @@ const HomePage = () => {
       {/* Welcome Section */}
       <div className="text-center py-6">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-          Good morning! 👋
+          {greeting}
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
           Here's your financial overview

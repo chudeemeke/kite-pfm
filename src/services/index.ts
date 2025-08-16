@@ -5,6 +5,7 @@ export { subscriptionsService } from './subscriptions'
 export { csvService } from './csv'
 export { formatService } from './format'
 export { demoService } from './demo'
+export { greetingService } from './greeting'
 
 // Export commonly used functions
 export {
@@ -22,3 +23,10 @@ export {
   formatNumber,
   truncateText
 } from './format'
+
+export {
+  getGreeting,
+  getShortGreeting,
+  getFarewell,
+  getAchievementMessage
+} from './greeting'

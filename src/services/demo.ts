@@ -100,20 +100,20 @@ export class DemoService {
   private async createDemoCategories(): Promise<Category[]> {
     const categories: Omit<Category, 'id'>[] = [
       // Income categories
-      { name: '💰 Salary', icon: '💰', color: '#10b981', parentId: undefined },
-      { name: '💼 Freelance', icon: '💼', color: '#06b6d4', parentId: undefined },
-      { name: '📈 Investments', icon: '📈', color: '#8b5cf6', parentId: undefined },
+      { name: 'Salary', icon: 'salary', color: '#10b981', parentId: undefined },
+      { name: 'Freelance', icon: 'freelance', color: '#06b6d4', parentId: undefined },
+      { name: 'Investments', icon: 'investment', color: '#8b5cf6', parentId: undefined },
       
       // Expense categories
-      { name: '🍽️ Food & Dining', icon: '🍽️', color: '#f59e0b', parentId: undefined },
-      { name: '🏠 Housing', icon: '🏠', color: '#ef4444', parentId: undefined },
-      { name: '🚗 Transport', icon: '🚗', color: '#3b82f6', parentId: undefined },
-      { name: '💊 Healthcare', icon: '💊', color: '#ec4899', parentId: undefined },
-      { name: '🎬 Entertainment', icon: '🎬', color: '#f97316', parentId: undefined },
-      { name: '🛒 Shopping', icon: '🛒', color: '#84cc16', parentId: undefined },
-      { name: '📱 Utilities & Bills', icon: '📱', color: '#6366f1', parentId: undefined },
-      { name: '🎓 Education', icon: '🎓', color: '#14b8a6', parentId: undefined },
-      { name: '💳 Banking & Fees', icon: '💳', color: '#64748b', parentId: undefined }
+      { name: 'Food & Dining', icon: 'food', color: '#f59e0b', parentId: undefined },
+      { name: 'Housing', icon: 'housing', color: '#ef4444', parentId: undefined },
+      { name: 'Transport', icon: 'transport', color: '#3b82f6', parentId: undefined },
+      { name: 'Healthcare', icon: 'healthcare', color: '#ec4899', parentId: undefined },
+      { name: 'Entertainment', icon: 'entertainment', color: '#f97316', parentId: undefined },
+      { name: 'Shopping', icon: 'shopping', color: '#84cc16', parentId: undefined },
+      { name: 'Utilities & Bills', icon: 'utilities', color: '#6366f1', parentId: undefined },
+      { name: 'Education', icon: 'education', color: '#14b8a6', parentId: undefined },
+      { name: 'Banking & Fees', icon: 'banking', color: '#64748b', parentId: undefined }
     ]
     
     const createdCategories: Category[] = []

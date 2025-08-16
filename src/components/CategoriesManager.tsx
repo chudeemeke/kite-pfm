@@ -363,15 +363,15 @@ const CategoryModal = ({
 }) => {
   const [formData, setFormData] = useState({
     name: category?.name || '',
-    icon: category?.icon || '📝',
+    icon: category?.icon || 'default',
     color: category?.color || '#3b82f6'
   })
 
-  // Common icons for categories
+  // Common icon names for categories
   const commonIcons = [
-    '🏠', '🚗', '🍔', '🛒', '💡', '📱', '🎬', '🏥', '✈️', '🎓',
-    '💼', '🎵', '👕', '🏋️', '🎮', '📚', '🍕', '☕', '🍾', '🎁',
-    '💰', '💳', '🏪', '🚕', '⛽', '🏦', '💻', '📺', '🎸', '🎨'
+    'salary', 'freelance', 'investment', 'food', 'housing',
+    'transport', 'healthcare', 'entertainment', 'shopping',
+    'utilities', 'education', 'banking', 'default'
   ]
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -16,6 +16,7 @@ import {
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { ListItem, ListItemAction, ListItemGroup } from '@/components/shared/ListItem'
+import { PremiumCategoryIconRenderer } from '@/components/icons/PremiumCategoryIcons'
 
 /**
  * Activity page component for managing and viewing transaction history.
@@ -468,7 +469,7 @@ const ActivityPage = () => {
           const subtitleParts = []
           if (account) subtitleParts.push(account.name)
           if (category) {
-            subtitleParts.push(`${category.icon} ${category.name}`)
+            subtitleParts.push(category.name)
           }
           const subtitle = subtitleParts.join(' • ')
           
@@ -482,6 +483,7 @@ const ActivityPage = () => {
               selectable
               selected={isSelected}
               onSelectChange={() => handleSelectTransaction(transaction.id)}
+              icon={category ? <PremiumCategoryIconRenderer category={category.name} size={20} /> : undefined}
               title={transaction.description}
               subtitle={subtitle}
               metadata={transaction.date ? formatRelativeDate(transaction.date) : 'No date'}
